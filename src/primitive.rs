@@ -1,20 +1,46 @@
 use crate::math::{Point3, Ray, Vec3};
-pub struct IntersectionData {
+#[derive(Copy, Clone, Debug)]
+pub struct SurfaceIntersectionData {
     pub time: f32,
     pub point: Point3,
     pub normal: Vec3,
     pub material_id: usize,
+    pub outer_medium_id: usize,
+    pub inner_medium_id: usize,
 }
 
-impl IntersectionData {
-    pub fn new(time: f32, point: Point3, normal: Vec3, material_id: usize) -> Self {
-        IntersectionData {
+impl SurfaceIntersectionData {
+    pub fn new(
+        time: f32,
+        point: Point3,
+        normal: Vec3,
+        material_id: usize,
+        outer_medium_id: usize,
+        inner_medium_id: usize,
+    ) -> Self {
+        SurfaceIntersectionData {
             time,
             point,
             normal,
             material_id,
+            outer_medium_id,
+            inner_medium_id,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MediumIntersectionData {
+    pub time: f32,
+    pub point: Point3,
+    pub wi: Vec3,
+    pub medium_id: usize,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum IntersectionData {
+    Surface(SurfaceIntersectionData),
+    Medium(MediumIntersectionData),
 }
 
 pub trait Primitive {
@@ -26,14 +52,24 @@ pub struct Sphere {
     pub radius: f32,
     pub origin: Point3,
     pub material_id: usize,
+    pub outer_medium_id: usize,
+    pub inner_medium_id: usize,
 }
 
 impl Sphere {
-    pub fn new(radius: f32, origin: Point3, material_id: usize) -> Sphere {
+    pub fn new(
+        radius: f32,
+        origin: Point3,
+        material_id: usize,
+        outer_medium_id: usize,
+        inner_medium_id: usize,
+    ) -> Sphere {
         Sphere {
             radius,
             origin,
             material_id,
+            outer_medium_id,
+            inner_medium_id,
         }
     }
 
@@ -63,7 +99,14 @@ impl Primitive for Sphere {
                 debug_assert!((point.w() - 1.0).abs() < 0.000001, "{:?}", point);
                 debug_assert!((self.origin.w() - 1.0).abs() < 0.000001);
                 normal = (point - self.origin) / self.radius;
-                return Some(IntersectionData::new(time, point, normal, self.material_id));
+                return Some(IntersectionData::Surface(SurfaceIntersectionData::new(
+                    time,
+                    point,
+                    normal,
+                    self.material_id,
+                    self.outer_medium_id,
+                    self.inner_medium_id,
+                )));
             }
             // time = r.time + (-b + discriminant_sqrt) / a;
             time = (-b + discriminant_sqrt) / a;
@@ -72,7 +115,14 @@ impl Primitive for Sphere {
                 debug_assert!((point.w() - 1.0).abs() < 0.000001, "{:?}", point);
                 debug_assert!((self.origin.w() - 1.0).abs() < 0.000001);
                 normal = (point - self.origin) / self.radius;
-                return Some(IntersectionData::new(time, point, normal, self.material_id));
+                return Some(IntersectionData::Surface(SurfaceIntersectionData::new(
+                    time,
+                    point,
+                    normal,
+                    self.material_id,
+                    self.outer_medium_id,
+                    self.inner_medium_id,
+                )));
             }
         }
         None

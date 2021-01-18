@@ -1,5 +1,8 @@
-use crate::math::{Sample2D, SpectralPowerDistributionFunction, Vec3, SPD};
-use crate::random::random_cosine_direction;
+use crate::{math::Sample1D, random::random_cosine_direction};
+use crate::{
+    math::{Point3, Ray, Sample2D, SpectralPowerDistributionFunction, Vec3, SPD},
+    random::random_on_unit_sphere,
+};
 use std::f32::consts::PI;
 pub trait Material {
     fn bsdf(&self, lambda: f32, wi: Vec3, wo: Vec3) -> (f32, f32);
@@ -34,13 +37,41 @@ impl Material for ConstLambertian {
             (0.0, 0.0)
         }
     }
-    // fn emission(&self, _hit: &HitRecord, _wi: Vec3, _wo: Option<Vec3>) -> SingleEnergy {
-    //     SingleEnergy::ZERO
+    // fn emission(&self, _lambda: f32, _wo: Vec3) -> f32 {
+    //     0.0
     // }
 }
 
 unsafe impl Send for ConstLambertian {}
 unsafe impl Sync for ConstLambertian {}
+
+#[derive(Clone)]
+pub struct ConstFilm {
+    pub color: SPD,
+}
+
+impl ConstFilm {
+    pub fn new(color: SPD) -> ConstFilm {
+        ConstFilm { color }
+    }
+    pub const NAME: &'static str = "Film";
+}
+
+impl Material for ConstFilm {
+    fn sample(&self, _lambda: f32, wi: Vec3, _s: Sample2D) -> Vec3 {
+        -wi
+    }
+
+    fn bsdf(&self, lambda: f32, _wi: Vec3, _wo: Vec3) -> (f32, f32) {
+        (self.color.evaluate(lambda), 1.0)
+    }
+    // fn emission(&self, _lambda: f32, _wo: Vec3) -> f32 {
+    //     0.0
+    // }
+}
+
+unsafe impl Send for ConstFilm {}
+unsafe impl Sync for ConstFilm {}
 
 #[derive(Clone)]
 pub struct ConstDiffuseEmitter {
@@ -72,12 +103,6 @@ impl Material for ConstDiffuseEmitter {
         }
     }
     fn emission(&self, lambda: f32, wo: Vec3) -> f32 {
-        let cosine = wo.z();
-        // if cosine > 0.0 {
-        //     self.emission_color.evaluate_power(lambda) / PI
-        // } else {
-        //     0.0
-        // }
         self.emission_color.evaluate_power(lambda) / PI
     }
 }
@@ -88,6 +113,7 @@ unsafe impl Sync for ConstDiffuseEmitter {}
 pub enum MaterialEnum {
     ConstLambertian(ConstLambertian),
     ConstDiffuseEmitter(ConstDiffuseEmitter),
+    ConstFilm(ConstFilm),
 }
 
 impl Material for MaterialEnum {
@@ -95,21 +121,102 @@ impl Material for MaterialEnum {
         match self {
             MaterialEnum::ConstLambertian(mat) => mat.sample(lambda, wi, sample),
             MaterialEnum::ConstDiffuseEmitter(mat) => mat.sample(lambda, wi, sample),
+            MaterialEnum::ConstFilm(mat) => mat.sample(lambda, wi, sample),
         }
     }
     fn bsdf(&self, lambda: f32, wi: Vec3, wo: Vec3) -> (f32, f32) {
         match self {
             MaterialEnum::ConstLambertian(mat) => mat.bsdf(lambda, wi, wo),
             MaterialEnum::ConstDiffuseEmitter(mat) => mat.bsdf(lambda, wi, wo),
+            MaterialEnum::ConstFilm(mat) => mat.bsdf(lambda, wi, wo),
         }
     }
     fn emission(&self, lambda: f32, wo: Vec3) -> f32 {
         match self {
             MaterialEnum::ConstLambertian(mat) => mat.emission(lambda, wo),
             MaterialEnum::ConstDiffuseEmitter(mat) => mat.emission(lambda, wo),
+            MaterialEnum::ConstFilm(mat) => mat.emission(lambda, wo),
         }
     }
 }
 
 unsafe impl Send for MaterialEnum {}
 unsafe impl Sync for MaterialEnum {}
+
+pub trait Medium {
+    fn p(&self, lambda: f32, wi: Vec3, wo: Vec3) -> f32;
+    fn sample_p(&self, lambda: f32, wi: Vec3, sample: Sample2D) -> (Vec3, f32);
+    fn sample(&self, lambda: f32, ray: Ray, s: Sample1D) -> (Point3, f32, bool);
+    fn tr(&self, lambda: f32, p0: Point3, p1: Point3) -> f32;
+}
+
+pub struct HenyeyGreensteinHomogeneous {
+    pub g: f32,
+    pub sigma_t: SPD, // transmittance attenuation
+    pub sigma_s: SPD, // scattering attenuation
+}
+
+impl Medium for HenyeyGreensteinHomogeneous {
+    fn p(&self, lambda: f32, wi: Vec3, wo: Vec3) -> f32 {
+        // just do isomorphic as a test
+        self.sigma_s.evaluate_power(lambda) * 1.0
+    }
+    fn sample_p(&self, lambda: f32, wi: Vec3, s: Sample2D) -> (Vec3, f32) {
+        // just do isomorphic as a test
+        (
+            random_on_unit_sphere(s),
+            self.sigma_s.evaluate_power(lambda) * 1.0,
+        )
+    }
+    fn sample(&self, lambda: f32, ray: Ray, s: Sample1D) -> (Point3, f32, bool) {
+        let sigma_t = self.sigma_t.evaluate_power(lambda);
+        let dist = -(1.0 - s.x).ln() / sigma_t;
+        let t = dist.min(ray.tmax);
+        let sampled_medium = t < ray.tmax;
+
+        let point = ray.point_at_parameter(t);
+        let tr = self.tr(lambda, ray.origin, point);
+        // could add HWSS here.
+        let density = if sampled_medium { sigma_t * tr } else { tr };
+        let pdf = density;
+        if sampled_medium {
+            (point, tr * self.sigma_s.evaluate_power(lambda) / pdf, true)
+        } else {
+            (point, tr / pdf, false)
+        }
+    }
+    fn tr(&self, lambda: f32, p0: Point3, p1: Point3) -> f32 {
+        let sigma_t = self.sigma_t.evaluate_power(lambda);
+        (-sigma_t * (p1 - p0).norm()).exp()
+    }
+}
+
+pub enum MediumEnum {
+    HenyeyGreensteinHomogeneous(HenyeyGreensteinHomogeneous),
+}
+
+impl Medium for MediumEnum {
+    fn p(&self, lambda: f32, wi: Vec3, wo: Vec3) -> f32 {
+        match self {
+            MediumEnum::HenyeyGreensteinHomogeneous(inner) => inner.p(lambda, wi, wo),
+        }
+    }
+    fn sample_p(&self, lambda: f32, wi: Vec3, s: Sample2D) -> (Vec3, f32) {
+        match self {
+            MediumEnum::HenyeyGreensteinHomogeneous(inner) => inner.sample_p(lambda, wi, s),
+        }
+    }
+    fn sample(&self, lambda: f32, ray: Ray, s: Sample1D) -> (Point3, f32, bool) {
+        match self {
+            MediumEnum::HenyeyGreensteinHomogeneous(inner) => inner.sample(lambda, ray, s),
+        }
+    }
+    fn tr(&self, lambda: f32, p0: Point3, p1: Point3) -> f32 {
+        match self {
+            MediumEnum::HenyeyGreensteinHomogeneous(inner) => inner.tr(lambda, p0, p1),
+        }
+    }
+}
+
+unsafe impl Send for MediumEnum {}
+unsafe impl Sync for MediumEnum {}
