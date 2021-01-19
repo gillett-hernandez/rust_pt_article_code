@@ -1,7 +1,10 @@
-use crate::{math::Sample1D, random::random_cosine_direction};
 use crate::{
     math::{Point3, Ray, Sample2D, SpectralPowerDistributionFunction, Vec3, SPD},
     random::random_on_unit_sphere,
+};
+use crate::{
+    math::{Sample1D, TangentFrame},
+    random::random_cosine_direction,
 };
 use std::f32::consts::PI;
 pub trait Material {
@@ -150,6 +153,11 @@ pub trait Medium {
     fn tr(&self, lambda: f32, p0: Point3, p1: Point3) -> f32;
 }
 
+pub fn phase_hg(cos_theta: f32, g: f32) -> f32 {
+    let denom = 1.0 + g * g + 2.0 * g * cos_theta;
+    (1.0 - g * g) / (denom * denom.sqrt() * 2.0 * std::f32::consts::TAU)
+}
+
 pub struct HenyeyGreensteinHomogeneous {
     pub g: f32,
     pub sigma_t: SPD, // transmittance attenuation
@@ -158,14 +166,26 @@ pub struct HenyeyGreensteinHomogeneous {
 
 impl Medium for HenyeyGreensteinHomogeneous {
     fn p(&self, lambda: f32, wi: Vec3, wo: Vec3) -> f32 {
-        // just do isomorphic as a test
-        self.sigma_s.evaluate_power(lambda) * 1.0
+        let cos_theta = wi * wo;
+        self.sigma_s.evaluate_power(lambda) * phase_hg(cos_theta, self.g)
     }
     fn sample_p(&self, lambda: f32, wi: Vec3, s: Sample2D) -> (Vec3, f32) {
         // just do isomorphic as a test
+        let cos_theta = if self.g.abs() < 0.001 {
+            1.0 - 2.0 * s.x
+        } else {
+            let sqr = (1.0 - self.g * self.g) / (1.0 + self.g - 2.0 * self.g * s.x);
+            -(1.0 + self.g * self.g - sqr * sqr) / (2.0 * self.g)
+        };
+
+        let sin_theta = (0.0f32).max(1.0 - cos_theta * cos_theta).sqrt();
+        let phi = std::f32::consts::TAU * s.y;
+        let frame = TangentFrame::from_normal(wi);
+        let (sin_phi, cos_phi) = phi.sin_cos();
+        let wo = Vec3::new(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
         (
-            random_on_unit_sphere(s),
-            self.sigma_s.evaluate_power(lambda) * 1.0,
+            frame.to_world(&wo),
+            self.sigma_s.evaluate_power(lambda) * phase_hg(cos_theta, self.g),
         )
     }
     fn sample(&self, lambda: f32, ray: Ray, s: Sample1D) -> (Point3, f32, bool) {

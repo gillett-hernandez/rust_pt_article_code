@@ -60,8 +60,8 @@ fn main() {
     let w = 1024;
     let wavelength_range = BOUNDED_VISIBLE_RANGE;
 
-    let samples = 128;
-    let bounces = 10;
+    let samples = 256;
+    let bounces = 12;
     let mut film = Film::new(w, h, XYZColor::ZERO);
     let white = SPD::Linear {
         signal: vec![1.0],
@@ -70,6 +70,11 @@ fn main() {
     };
     let off_white = SPD::Linear {
         signal: vec![0.8],
+        bounds: EXTENDED_VISIBLE_RANGE,
+        mode: InterpolationMode::Linear,
+    };
+    let blueish = SPD::Linear {
+        signal: vec![0.9, 0.7, 0.5, 0.4, 0.2, 0.1],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
@@ -97,9 +102,9 @@ fn main() {
     ];
     let mediums: Vec<MediumEnum> = vec![MediumEnum::HenyeyGreensteinHomogeneous(
         HenyeyGreensteinHomogeneous {
-            g: 0.0,
-            sigma_s: white.clone(),
-            sigma_t: black_ish.clone(),
+            g: 0.9,
+            sigma_s: blueish.clone(),
+            sigma_t: blueish.clone(),
         },
     )];
     let scene: Vec<Sphere> = vec![
