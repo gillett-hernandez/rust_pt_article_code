@@ -51,7 +51,7 @@ fn main() {
     let num_cpus = num_cpus::get();
     let threads = num_cpus;
     rayon::ThreadPoolBuilder::new()
-        .num_threads(1 as usize)
+        .num_threads(threads as usize)
         // .num_threads(threads as usize)
         .build_global()
         .unwrap();
@@ -60,7 +60,7 @@ fn main() {
     let w = 1024;
     let wavelength_range = BOUNDED_VISIBLE_RANGE;
 
-    let samples = 16;
+    let samples = 128;
     let bounces = 10;
     let mut film = Film::new(w, h, XYZColor::ZERO);
     let white = SPD::Linear {
@@ -68,13 +68,23 @@ fn main() {
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
+    let off_white = SPD::Linear {
+        signal: vec![0.8],
+        bounds: EXTENDED_VISIBLE_RANGE,
+        mode: InterpolationMode::Linear,
+    };
+    let grey = SPD::Linear {
+        signal: vec![0.2],
+        bounds: EXTENDED_VISIBLE_RANGE,
+        mode: InterpolationMode::Linear,
+    };
     let black_ish = SPD::Linear {
-        signal: vec![0.01],
+        signal: vec![0.04],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
     let materials: Vec<MaterialEnum> = vec![
-        MaterialEnum::ConstLambertian(ConstLambertian::new(white.clone())),
+        MaterialEnum::ConstLambertian(ConstLambertian::new(grey.clone())),
         MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
             white.clone(),
             SPD::Linear {
@@ -89,13 +99,13 @@ fn main() {
         HenyeyGreensteinHomogeneous {
             g: 0.0,
             sigma_s: white.clone(),
-            sigma_t: white.clone(),
+            sigma_t: black_ish.clone(),
         },
     )];
     let scene: Vec<Sphere> = vec![
         Sphere::new(1.0, Point3::ORIGIN, 0, 1, 0), // subject sphere
-        Sphere::new(10.0, Point3::new(0.0, 0.0, 15.0), 0, 0, 0), // light
-        Sphere::new(100.0, Point3::new(0.0, 0.0, -103.0), 1, 0, 0), // floor
+        Sphere::new(10.0, Point3::new(0.0, 0.0, 15.0), 1, 0, 0), // light
+        Sphere::new(100.0, Point3::new(0.0, 0.0, -103.0), 0, 0, 0), // floor
         Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // bubble of scattering
     ];
     let camera = ProjectiveCamera::new(
@@ -131,7 +141,7 @@ fn main() {
                 // if tracked_mediums.len() > 0 {
                 //     println!("\n{:?}", tracked_mediums);
                 // }
-                tracked_mediums.dedup();
+                // tracked_mediums.dedup();
                 let mut nearest_intersection: Option<IntersectionData> = None;
                 let mut nearest_intersection_time = INFINITY;
 
@@ -147,7 +157,7 @@ fn main() {
                 }
 
                 if nearest_intersection.is_none() {
-                    s += throughput * 1.0; // hit env
+                    s += throughput * 0.0; // hit env
                     break;
                 }
                 // iterate through volumes and sample each, choosing the closest medium scattering (or randomly sampling?)
@@ -190,6 +200,11 @@ fn main() {
                         let frame = TangentFrame::from_normal(isect.normal);
                         let wi = frame.to_local(&-ray.direction);
                         let mat = &materials[isect.material_id];
+                        // let skip_throughput_mod = if let MaterialEnum::ConstFilm(e) = mat {
+                        //     true
+                        // } else {
+                        //     false
+                        // };
 
                         let outer = isect.outer_medium_id;
                         let inner = isect.inner_medium_id;
@@ -259,7 +274,7 @@ fn main() {
                         }
                         ray = Ray::new(
                             isect.point
-                                + (if wo.z() > 0.0 { 1.0 } else { -1.0 }) * isect.normal * 0.000001,
+                                + (if wo.z() > 0.0 { 1.0 } else { -1.0 }) * isect.normal * 0.0001,
                             frame.to_world(&wo).normalized(),
                         );
                     }

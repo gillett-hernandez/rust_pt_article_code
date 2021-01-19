@@ -62,8 +62,8 @@ impl Material for ConstFilm {
         -wi
     }
 
-    fn bsdf(&self, lambda: f32, _wi: Vec3, _wo: Vec3) -> (f32, f32) {
-        (self.color.evaluate(lambda), 1.0)
+    fn bsdf(&self, lambda: f32, _wi: Vec3, wo: Vec3) -> (f32, f32) {
+        (self.color.evaluate(lambda) / wo.z().abs(), 1.0)
     }
     // fn emission(&self, _lambda: f32, _wo: Vec3) -> f32 {
     //     0.0
