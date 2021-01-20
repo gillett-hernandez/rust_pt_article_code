@@ -69,7 +69,7 @@ fn main() {
         mode: InterpolationMode::Linear,
     };
     let off_white = SPD::Linear {
-        signal: vec![0.8],
+        signal: vec![0.95],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
@@ -77,6 +77,18 @@ fn main() {
         signal: vec![0.9, 0.7, 0.5, 0.4, 0.2, 0.1],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
+    };
+    let mut rayleigh = Vec::new();
+    for i in 0..100 {
+        let lambda =
+            EXTENDED_VISIBLE_RANGE.lower + EXTENDED_VISIBLE_RANGE.span() * i as f32 / 100.0;
+        rayleigh.push(1000000000.0 * lambda.powf(-4.0));
+    }
+    println!("{:?}", rayleigh);
+    let rayleigh_color = SPD::Linear {
+        signal: rayleigh,
+        bounds: EXTENDED_VISIBLE_RANGE,
+        mode: InterpolationMode::Cubic,
     };
     let grey = SPD::Linear {
         signal: vec![0.2],
@@ -100,24 +112,30 @@ fn main() {
         )),
         MaterialEnum::ConstFilm(ConstFilm::new(white.clone())),
     ];
-    let mediums: Vec<MediumEnum> = vec![MediumEnum::HenyeyGreensteinHomogeneous(
-        HenyeyGreensteinHomogeneous {
-            g: 0.9,
-            sigma_s: blueish.clone(),
-            sigma_t: blueish.clone(),
-        },
-    )];
+    let mediums: Vec<MediumEnum> = vec![
+        MediumEnum::HenyeyGreensteinHomogeneous(HenyeyGreensteinHomogeneous {
+            g: 0.1,
+            sigma_s: off_white.clone(),
+            sigma_t: rayleigh_color.clone(),
+        }),
+        MediumEnum::HenyeyGreensteinHomogeneous(HenyeyGreensteinHomogeneous {
+            g: 0.0,
+            sigma_s: off_white.clone(),
+            sigma_t: black_ish.clone(),
+        }),
+    ];
     let scene: Vec<Sphere> = vec![
-        Sphere::new(1.0, Point3::ORIGIN, 0, 1, 0), // subject sphere
+        Sphere::new(1.0, Point3::ORIGIN, 0, 0, 0), // subject sphere
         Sphere::new(10.0, Point3::new(0.0, 0.0, 15.0), 1, 0, 0), // light
         Sphere::new(100.0, Point3::new(0.0, 0.0, -103.0), 0, 0, 0), // floor
-        Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // bubble of scattering
+        Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
+        Sphere::new(20.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // large bubble of scattering. inner medium is `1`. outer medium is `0`. surface is transparent shell.
     ];
     let camera = ProjectiveCamera::new(
         Point3::new(-25.0, 0.0, 0.0),
         Point3::ORIGIN,
         Vec3::Z,
-        20.0,
+        45.0,
         1.0,
         10.0,
         0.01,
@@ -141,6 +159,7 @@ fn main() {
             let mut throughput = f32x4::splat(1.0);
             // somehow determine what medium the camera ray starts in. assume vacuum for now
             let mut tracked_mediums: Vec<usize> = Vec::new();
+            // tracked_mediums.push(1);
 
             for _ in 0..bounces {
                 // if tracked_mediums.len() > 0 {
@@ -240,19 +259,29 @@ fn main() {
                             // println!("reflect, {}, {}", outer, inner);
                         } else {
                             // transmitting, so remove appropriate medium from list and add new one. only applicable if inner != outer
+
                             if inner != outer {
-                                // println!("transmit, {}, {}, {:?}", outer, inner, isect.normal);
+                                // println!(
+                                // "transmit, {}, {}, {:?}, {:?}, {:?}",
+                                // outer, inner, wo, isect.normal, tracked_mediums
+                                // );
                                 // print!("{} ", isect.material_id);
                                 if wo.z() < 0.0 {
                                     // println!("wo.z < 0, wi: {:?}, wo: {:?}", wi, wo);
                                     // transmitting from outer to inner. thus remove outer and add inner
                                     if outer != 0 {
                                         // only remove outer if it's not the Vacuum index.
-                                        let index = tracked_mediums
-                                            .iter()
-                                            .position(|e| *e == outer)
-                                            .expect("should have found correct medium.");
-                                        tracked_mediums.remove(index);
+                                        match tracked_mediums.iter().position(|e| *e == outer) {
+                                            Some(index) => {
+                                                tracked_mediums.remove(index);
+                                            }
+                                            None => {
+                                                println!(
+                                                    "warning: attempted to transition out of a medium that was not being tracked. tracked mediums already was {:?}. transmit from {} to {}, {:?}, {:?}.",
+                                                    tracked_mediums, outer, inner, wi, wo
+                                                );
+                                            }
+                                        }
                                     }
                                     if inner != 0 {
                                         // let insertion_index = tracked_mediums.binary_search(&inner);
@@ -264,11 +293,17 @@ fn main() {
                                     // transmitting from inner to outer. thus remove inner and add outer, unless outer is vacuum.
                                     // also don't do anything if inner is vacuum.
                                     if inner != 0 {
-                                        let index = tracked_mediums
-                                            .iter()
-                                            .position(|e| *e == inner)
-                                            .expect("should have found correct medium.");
-                                        tracked_mediums.remove(index);
+                                        match tracked_mediums.iter().position(|e| *e == inner) {
+                                            Some(index) => {
+                                                tracked_mediums.remove(index);
+                                            }
+                                            None => {
+                                                println!(
+                                                    "warning: attempted to transition out of a medium that was not being tracked. tracked mediums already was {:?}. transmit from {} to {}, {:?}, {:?}.",
+                                                     tracked_mediums, inner,outer, wi, wo
+                                                );
+                                            }
+                                        }
                                     }
                                     if outer != 0 {
                                         tracked_mediums.push(outer);
@@ -284,17 +319,18 @@ fn main() {
                         );
                     }
                     IntersectionData::Medium(isect) => {
-                        // println!("medium interaction {}", isect.medium_id);
                         let medium = &mediums[isect.medium_id - 1];
                         let wi = -ray.direction;
                         let (wo, f_and_pdf) =
                             medium.sample_p(lambdas.extract(0), wi, Sample2D::new_random_sample());
+
+                        // println!("medium interaction {}, wi = {:?}, wo = {:?}", isect.medium_id, wi, wo);
                         throughput = throughput.replace(0, throughput.extract(0) * f_and_pdf);
                         for i in 1..4 {
                             let f_and_pdf = medium.p(lambdas.extract(i), wi, wo);
                             throughput = throughput.replace(i, throughput.extract(i) * f_and_pdf);
                         }
-                        ray = Ray::new(isect.point + wo * 0.000001, wo);
+                        ray = Ray::new(isect.point, wo);
                     }
                 }
             }
