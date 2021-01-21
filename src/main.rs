@@ -96,7 +96,7 @@ fn main() {
         mode: InterpolationMode::Linear,
     };
     let black_ish = SPD::Linear {
-        signal: vec![0.04],
+        signal: vec![0.3],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
@@ -126,7 +126,7 @@ fn main() {
     ];
     let scene: Vec<Sphere> = vec![
         Sphere::new(1.0, Point3::ORIGIN, 0, 0, 0), // subject sphere
-        Sphere::new(10.0, Point3::new(0.0, 0.0, 15.0), 1, 0, 0), // light
+        Sphere::new(10.0, Point3::new(0.0, 0.0, 25.0), 1, 0, 0), // light
         Sphere::new(100.0, Point3::new(0.0, 0.0, -103.0), 0, 0, 0), // floor
         Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
         Sphere::new(20.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // large bubble of scattering. inner medium is `1`. outer medium is `0`. surface is transparent shell.
