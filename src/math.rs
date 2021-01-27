@@ -534,23 +534,6 @@ impl Sample1D {
     }
 }
 
-#[derive(Debug)]
-pub struct Sample2D {
-    pub x: f32,
-    pub y: f32,
-}
-
-impl Sample2D {
-    pub fn new(x: f32, y: f32) -> Self {
-        debug_assert!(x < 1.0 && x >= 0.0);
-        debug_assert!(y < 1.0 && y >= 0.0);
-
-        Sample2D { x, y }
-    }
-    pub fn new_random_sample() -> Self {
-        Sample2D::new(rand::random(), rand::random())
-    }
-}
 
 #[derive(Debug, PartialEq, Copy, Clone, Serialize, Deserialize)]
 pub enum InterpolationMode {

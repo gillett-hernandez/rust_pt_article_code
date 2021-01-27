@@ -1,5 +1,69 @@
-use crate::math::{Sample2D, Vec3};
+use crate::math::Vec3;
 use std::f32::{consts::PI, INFINITY};
+
+#[derive(Debug)]
+pub struct Sample1D {
+    pub x: f32,
+}
+
+impl Sample1D {
+    pub fn new(x: f32) -> Self {
+        debug_assert!(x < 1.0 && x >= 0.0);
+        Sample1D { x }
+    }
+    pub fn new_random_sample() -> Self {
+        Sample1D::new(rand::random::<f32>())
+    }
+    pub fn choose<T>(mut self, split: f32, a: T, b: T) -> (Self, T) {
+        debug_assert!(0.0 <= split && split <= 1.0);
+        debug_assert!(self.x >= 0.0 && self.x < 1.0);
+        if self.x < split {
+            assert!(split > 0.0);
+            self.x /= split;
+            (self, a)
+        } else {
+            // if split was 1.0, there's no way for self.x to be greather than or equal to it
+            // since self.x in [0, 1)
+            debug_assert!(split < 1.0);
+            self.x = (self.x - split) / (1.0 - split);
+            (self, b)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Sample2D {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Sample2D {
+    pub fn new(x: f32, y: f32) -> Self {
+        debug_assert!(x < 1.0 && x >= 0.0);
+        debug_assert!(y < 1.0 && y >= 0.0);
+
+        Sample2D { x, y }
+    }
+    pub fn new_random_sample() -> Self {
+        Sample2D::new(rand::random(), rand::random())
+    }
+}
+
+#[derive(Debug)]
+pub struct Sample3D {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+impl Sample3D {
+    pub const fn new(x: f32, y: f32, z: f32) -> Self {
+        Sample3D { x, y, z }
+    }
+    pub fn new_random_sample() -> Self {
+        Sample3D::new(rand::random(), rand::random(), rand::random())
+    }
+}
 
 pub fn random_on_unit_sphere(r: Sample2D) -> Vec3 {
     // let u = 1.0 - 2.0 * r.x;
@@ -56,4 +120,30 @@ pub fn random_to_sphere(r: Sample2D, radius: f32, distance_squared: f32) -> Vec3
     x *= sqrt_1_z2;
     y *= sqrt_1_z2;
     return Vec3::new(x, y, z);
+}
+
+pub trait Sampler {
+    fn draw_1d(&mut self) -> Sample1D;
+    fn draw_2d(&mut self) -> Sample2D;
+    fn draw_3d(&mut self) -> Sample3D;
+}
+
+pub struct RandomSampler {}
+
+impl RandomSampler {
+    pub const fn new() -> RandomSampler {
+        RandomSampler {}
+    }
+}
+
+impl Sampler for RandomSampler {
+    fn draw_1d(&mut self) -> Sample1D {
+        Sample1D::new_random_sample()
+    }
+    fn draw_2d(&mut self) -> Sample2D {
+        Sample2D::new_random_sample()
+    }
+    fn draw_3d(&mut self) -> Sample3D {
+        Sample3D::new_random_sample()
+    }
 }

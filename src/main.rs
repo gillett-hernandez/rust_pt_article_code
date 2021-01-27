@@ -4,10 +4,12 @@ extern crate packed_simd;
 use std::f32::INFINITY;
 
 use packed_simd::f32x4;
+use random::{Sample1D, Sample2D};
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 
 pub mod camera;
+pub mod clm;
 pub mod film;
 pub mod material;
 pub mod math;
@@ -16,10 +18,11 @@ pub mod random;
 pub mod tonemap;
 
 use camera::ProjectiveCamera;
+use clm::{Layer, CLM};
 use film::Film;
 use material::{
     ConstDiffuseEmitter, ConstFilm, ConstLambertian, HenyeyGreensteinHomogeneous, Material,
-    MaterialEnum, Medium, MediumEnum,
+    MaterialEnum, Medium, MediumEnum, GGX,
 };
 use math::*;
 use primitive::{
@@ -82,7 +85,7 @@ fn main() {
     for i in 0..100 {
         let lambda =
             EXTENDED_VISIBLE_RANGE.lower + EXTENDED_VISIBLE_RANGE.span() * i as f32 / 100.0;
-        rayleigh.push(1000000000.0 * lambda.powf(-4.0));
+        rayleigh.push(100000000.0 * lambda.powf(-4.0));
     }
     println!("{:?}", rayleigh);
     let rayleigh_color = SPD::Linear {
@@ -96,10 +99,30 @@ fn main() {
         mode: InterpolationMode::Linear,
     };
     let black_ish = SPD::Linear {
-        signal: vec![0.3],
+        signal: vec![0.01],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
+
+    let glass = SPD::Cauchy { a: 1.5, b: 10000.0 };
+    let flat_zero = SPD::Linear {
+        signal: vec![0.0],
+        bounds: Bounds1D::new(390.0, 750.0),
+        mode: InterpolationMode::Linear,
+    };
+    let ggx_glass = GGX::new(0.000001, glass, 1.0, flat_zero, 1.0, 1);
+
+    let clm = CLM::new(
+        vec![
+            Layer::Diffuse {
+                color: off_white.clone(),
+            },
+            // Layer::Dielectric(ggx_glass.clone()),
+            // Layer::Dielectric(ggx_glass.clone()),
+        ],
+        20,
+    );
+
     let materials: Vec<MaterialEnum> = vec![
         MaterialEnum::ConstLambertian(ConstLambertian::new(grey.clone())),
         MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
@@ -111,6 +134,7 @@ fn main() {
             },
         )),
         MaterialEnum::ConstFilm(ConstFilm::new(white.clone())),
+        MaterialEnum::CLM(clm),
     ];
     let mediums: Vec<MediumEnum> = vec![
         MediumEnum::HenyeyGreensteinHomogeneous(HenyeyGreensteinHomogeneous {
@@ -125,7 +149,7 @@ fn main() {
         }),
     ];
     let scene: Vec<Sphere> = vec![
-        Sphere::new(1.0, Point3::ORIGIN, 0, 0, 0), // subject sphere
+        Sphere::new(1.0, Point3::ORIGIN, 3, 2, 0), // subject sphere
         Sphere::new(10.0, Point3::new(0.0, 0.0, 25.0), 1, 0, 0), // light
         Sphere::new(100.0, Point3::new(0.0, 0.0, -103.0), 0, 0, 0), // floor
         Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
@@ -180,6 +204,8 @@ fn main() {
                     }
                 }
 
+                // TODO: handle case where there's still a tracked medium to potentially scatter off of. instead of just going straight to the environment. maybe this implicitly handles it since global volumes shouldn't be a thing? idk.
+                // i.e. transmittance along a ray that travels infinitely would almost always be 0.0
                 if nearest_intersection.is_none() {
                     s += throughput * 0.0; // hit env
                     break;
