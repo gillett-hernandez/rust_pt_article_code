@@ -1,11 +1,8 @@
-use crate::{
-    clm::CLM,
-    random::{Sample1D, Sample2D},
-};
+use crate::clm::CLM;
 
-use crate::{
-    math::{Point3, Ray, SpectralPowerDistributionFunction, TangentFrame, Vec3, SPD},
-    random::{random_cosine_direction, random_on_unit_sphere},
+use math::{
+    random_cosine_direction, random_on_unit_sphere, Point3, Ray, Sample1D, Sample2D,
+    SpectralPowerDistributionFunction, TangentFrame, Vec3, SPD,
 };
 
 use std::f32::consts::PI;
@@ -632,7 +629,7 @@ impl Medium for HenyeyGreensteinHomogeneous {
     }
     fn sample(&self, lambda: f32, ray: Ray, s: Sample1D) -> (Point3, f32, bool) {
         let sigma_t = self.sigma_t.evaluate_power(lambda);
-        let dist = -(1.0 - s.x).ln() / sigma_t;
+        let dist = -(1.0f32 - s.x).ln() / sigma_t;
         let t = dist.min(ray.tmax);
         let sampled_medium = t < ray.tmax;
 

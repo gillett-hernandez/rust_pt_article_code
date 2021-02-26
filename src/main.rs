@@ -4,7 +4,7 @@ extern crate packed_simd;
 use std::f32::INFINITY;
 
 use packed_simd::f32x4;
-use random::{Sample1D, Sample2D};
+use math::{Sample1D, Sample2D};
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 
@@ -12,9 +12,8 @@ pub mod camera;
 pub mod clm;
 pub mod film;
 pub mod material;
-pub mod math;
 pub mod primitive;
-pub mod random;
+// pub mod random;
 pub mod tonemap;
 
 use camera::ProjectiveCamera;
@@ -28,6 +27,7 @@ use math::*;
 use primitive::{
     IntersectionData, MediumIntersectionData, Primitive, Sphere, SurfaceIntersectionData,
 };
+use spectral::{BOUNDED_VISIBLE_RANGE, EXTENDED_VISIBLE_RANGE};
 use tonemap::{sRGB, Tonemapper};
 
 pub fn output_film(filename: Option<&String>, film: &Film<XYZColor>) {
@@ -83,8 +83,7 @@ fn main() {
     };
     let mut rayleigh = Vec::new();
     for i in 0..100 {
-        let lambda =
-            EXTENDED_VISIBLE_RANGE.lower + EXTENDED_VISIBLE_RANGE.span() * i as f32 / 100.0;
+        let lambda = EXTENDED_VISIBLE_RANGE.sample(i as f32 / 100.0);
         rayleigh.push(100000000.0 * lambda.powf(-4.0));
     }
     println!("{:?}", rayleigh);
@@ -360,22 +359,13 @@ fn main() {
                     }
                 }
             }
-            *e += XYZColor::from_wavelength_and_energy(
-                lambdas.extract(0),
-                s.extract(0) / (samples as f32 * 4.0),
-            );
-            *e += XYZColor::from_wavelength_and_energy(
-                lambdas.extract(1),
-                s.extract(1) / (samples as f32 * 4.0),
-            );
-            *e += XYZColor::from_wavelength_and_energy(
-                lambdas.extract(2),
-                s.extract(2) / (samples as f32 * 4.0),
-            );
-            *e += XYZColor::from_wavelength_and_energy(
-                lambdas.extract(3),
-                s.extract(3) / (samples as f32 * 4.0),
-            );
+            let s4 =samples as f32 * 4.0;
+
+            *e += XYZColor::from(SingleWavelength::new(lambdas.extract(0), (s.extract(0) / s4).into()));
+            *e += XYZColor::from(SingleWavelength::new(lambdas.extract(1), (s.extract(1) / s4).into()));
+            *e += XYZColor::from(SingleWavelength::new(lambdas.extract(2), (s.extract(2) / s4).into()));
+            *e += XYZColor::from(SingleWavelength::new(lambdas.extract(3), (s.extract(3) / s4).into()));
+
         }
     });
     output_film(None, &film);

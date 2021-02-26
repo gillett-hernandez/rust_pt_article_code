@@ -1,12 +1,7 @@
 // use math::XYZColor;
-use crate::{
-    material::refract,
-    random::{random_cosine_direction, RandomSampler, Sample2D, Sampler},
-};
-use crate::{
-    material::{Material, TransportMode, GGX},
-    math::*,
-};
+use crate::material::refract;
+use crate::material::{Material, TransportMode, GGX};
+use math::*;
 use std::f32::consts::PI;
 
 pub fn balance(f: f32, g: f32) -> f32 {
@@ -237,6 +232,8 @@ impl CLM {
 
         let mut throughput = 1.0;
         let mut path_pdf = 1.0;
+        let num_samples = long_path.0.len();
+        let nee_distance = short_path.0.len();
 
         for vert in long_path.0.iter() {
             let index = vert.index;
@@ -310,7 +307,10 @@ impl CLM {
                 path_pdf *= pdf;
             }
         }
-        (sum.into(), pdf_sum.into())
+        (
+            (sum / num_samples as f32).into(),
+            (pdf_sum / num_samples as f32).into(),
+        )
     }
 }
 
@@ -404,5 +404,76 @@ mod test {
             TransportMode::Importance,
         );
         println!("{}, {}", f, pdf);
+    }
+
+    const WINDOW_HEIGHT: usize = 800;
+    const WINDOW_WIDTH: usize = 800;
+    #[test]
+    fn visualize_clm() {
+        use crate::Film;
+        use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Scale, Window, WindowOptions};
+        use ordered_float::OrderedFloat;
+        use packed_simd::f32x4;
+        use rand::prelude::*;
+        use rayon::prelude::*;
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(22 as usize)
+            .build_global()
+            .unwrap();
+        let mut window = Window::new(
+            "Lens",
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+            WindowOptions {
+                scale: Scale::X1,
+                ..WindowOptions::default()
+            },
+        )
+        .unwrap_or_else(|e| {
+            panic!("{}", e);
+        });
+
+        let mut film = Film::new(WINDOW_WIDTH, WINDOW_HEIGHT, XYZColor::BLACK);
+        let mut window_pixels = Film::new(WINDOW_WIDTH, WINDOW_HEIGHT, 0u32);
+        window.limit_update_rate(Some(std::time::Duration::from_micros(6944)));
+        let width = film.width;
+        let height = film.height;
+        let mut sampler: Box<dyn Sampler> = Box::new(RandomSampler::new());
+
+        let glass = SPD::Cauchy { a: 1.5, b: 10000.0 };
+        let flat_zero = SPD::Linear {
+            signal: vec![0.0],
+            bounds: Bounds1D::new(390.0, 750.0),
+            mode: InterpolationMode::Linear,
+        };
+        let ggx_glass = GGX::new(0.00001, glass, 1.0, flat_zero, 1.0, 0);
+
+        let white = SPD::Linear {
+            signal: vec![0.9],
+            bounds: Bounds1D::new(390.0, 750.0),
+            mode: InterpolationMode::Linear,
+        };
+        let clm = CLM::new(
+            vec![
+                Layer::Diffuse { color: white },
+                Layer::Dielectric(ggx_glass.clone()),
+                // Layer::Dielectric(ggx_glass.clone()),
+            ],
+            20,
+        );
+        while window.is_open() && !window.is_key_down(Key::Escape) {
+            let keys = window.get_keys_pressed(KeyRepeat::No);
+
+            for key in keys.unwrap_or(vec![]) {
+                match key {
+                    _ => {}
+                }
+            }
+            std::thread::sleep(std::time::Duration::new(0, 16000000));
+
+            window
+                .update_with_buffer(&window_pixels.buffer, WINDOW_WIDTH, WINDOW_HEIGHT)
+                .unwrap();
+        }
     }
 }

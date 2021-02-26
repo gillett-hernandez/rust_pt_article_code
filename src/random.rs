@@ -1,4 +1,4 @@
-use crate::math::Vec3;
+use math::Vec3;
 use std::f32::{consts::PI, INFINITY};
 
 #[derive(Debug)]
