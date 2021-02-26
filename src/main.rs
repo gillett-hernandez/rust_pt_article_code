@@ -3,8 +3,8 @@ extern crate packed_simd;
 
 use std::f32::INFINITY;
 
-use packed_simd::f32x4;
 use math::{Sample1D, Sample2D};
+use packed_simd::f32x4;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 
@@ -116,10 +116,10 @@ fn main() {
             Layer::Diffuse {
                 color: off_white.clone(),
             },
-            // Layer::Dielectric(ggx_glass.clone()),
-            // Layer::Dielectric(ggx_glass.clone()),
+            Layer::Dielectric(ggx_glass.clone()),
+            Layer::Dielectric(ggx_glass.clone()),
         ],
-        20,
+        10,
     );
 
     let materials: Vec<MaterialEnum> = vec![
@@ -148,11 +148,11 @@ fn main() {
         }),
     ];
     let scene: Vec<Sphere> = vec![
-        Sphere::new(1.0, Point3::ORIGIN, 3, 2, 0), // subject sphere
+        Sphere::new(1.0, Point3::ORIGIN, 3, 0, 0), // subject sphere
         Sphere::new(10.0, Point3::new(0.0, 0.0, 25.0), 1, 0, 0), // light
         Sphere::new(100.0, Point3::new(0.0, 0.0, -103.0), 0, 0, 0), // floor
-        Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
-        Sphere::new(20.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // large bubble of scattering. inner medium is `1`. outer medium is `0`. surface is transparent shell.
+                                                   // Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
+                                                   // Sphere::new(20.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // large bubble of scattering. inner medium is `1`. outer medium is `0`. surface is transparent shell.
     ];
     let camera = ProjectiveCamera::new(
         Point3::new(-25.0, 0.0, 0.0),

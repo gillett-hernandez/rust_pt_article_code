@@ -225,7 +225,7 @@ impl CLM {
             TransportMode::Radiance => TransportMode::Importance,
         };
         let mut sum = 0.0;
-        let mut pdf_sum = 0.0;
+        let mut pdf_sum = 0.1;
         let wo = short_path.0.first().unwrap().wo;
 
         let nee_direction = if wo.z() > 0.0 { 1 } else { -1 };
@@ -233,13 +233,12 @@ impl CLM {
         let mut throughput = 1.0;
         let mut path_pdf = 1.0;
         let num_samples = long_path.0.len();
-        let nee_distance = short_path.0.len();
 
         for vert in long_path.0.iter() {
             let index = vert.index;
             let layer = &self.layers[index];
             let nee_index = index as isize + nee_direction;
-            let wi = Vec3::ZERO; // TODO: fix this
+            // let wi = Vec3::ZERO;
 
             if nee_index < 0 || nee_index as usize >= self.layers.len() {
                 let nee_wo = if nee_index < 0 {
@@ -257,23 +256,27 @@ impl CLM {
                     left_path_pdf * left_connection_pdf,
                 );
 
-                let (f, pdf) = layer.bsdf(lambda, wi, wo, transport_mode);
-
-                let weight = balance(left_connection_pdf, pdf);
+                let (f, pdf) = layer.bsdf(lambda, vert.wi, vert.wo, transport_mode);
 
                 if total_path_pdf > 0.0 {
-                    let addend = weight * total_throughput / total_path_pdf;
+                    let addend = total_throughput / total_path_pdf;
                     sum += addend;
                     pdf_sum += total_path_pdf;
                     // println!("a {} {}", addend, total_path_pdf);
                 }
 
-                throughput *= (1.0 - weight) * f;
-                path_pdf *= pdf
+                throughput *= f / pdf;
+                path_pdf *= pdf;
             } else {
                 let nee_index = nee_index as usize;
                 let nee_layer = &self.layers[nee_index];
-                let nee_vert = short_path.0[short_path.0.len() - nee_index];
+                assert!(
+                    nee_index < short_path.0.len(),
+                    "LP: {:?}\n SP: {:?}\n\n",
+                    long_path,
+                    short_path
+                );
+                let nee_vert = short_path.0[short_path.0.len() - 1 - nee_index];
 
                 let (left_f, left_path_pdf) = (throughput, path_pdf);
 
@@ -289,21 +292,16 @@ impl CLM {
                     left_path_pdf * left_connection_pdf * right_connection_pdf * right_path_pdf,
                 );
 
-                let (f, pdf) = layer.bsdf(lambda, wi, wo, transport_mode);
-
-                let weight = balance(
-                    left_connection_pdf * right_connection_pdf * right_path_pdf,
-                    pdf,
-                );
+                let (f, pdf) = layer.bsdf(lambda, vert.wi, vert.wo, transport_mode);
 
                 if total_path_pdf > 0.0 {
-                    let addend = weight * total_throughput / total_path_pdf;
+                    let addend = total_throughput / total_path_pdf;
                     sum += addend;
                     pdf_sum += total_path_pdf;
                     // println!("a2 {} {}", addend, total_path_pdf);
                 }
 
-                throughput *= (1.0 - weight) * f;
+                throughput *= f / pdf;
                 path_pdf *= pdf;
             }
         }
@@ -314,18 +312,17 @@ impl CLM {
     }
 }
 
+pub fn rgb_to_u32(r: u8, g: u8, b: u8) -> u32 {
+    ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+}
+
 impl Material for CLM {
     fn bsdf(&self, lambda: f32, wi: Vec3, wo: Vec3) -> (f32, f32) {
         let mut sampler = RandomSampler::new();
-        let path = self.generate(
-            lambda,
-            Vec3::new(1.0, 0.0, 10.0).normalized(),
-            &mut sampler,
-            TransportMode::Importance,
-        );
+        let path = self.generate(lambda, wi, &mut sampler, TransportMode::Importance);
         // println!("long path finished");
 
-        let wo = path.0.last().unwrap().wo;
+        // let wo = path.0.last().unwrap().wo;
 
         let short_path = self.generate_short(lambda, wo, TransportMode::Radiance);
 
@@ -340,12 +337,7 @@ impl Material for CLM {
     }
     fn sample(&self, lambda: f32, wi: Vec3, sample: Sample2D) -> Vec3 {
         let mut sampler = RandomSampler::new();
-        let path = self.generate(
-            lambda,
-            Vec3::new(1.0, 0.0, 10.0).normalized(),
-            &mut sampler,
-            TransportMode::Importance,
-        );
+        let path = self.generate(lambda, wi, &mut sampler, TransportMode::Importance);
         path.0.last().unwrap().wo
     }
     fn emission(&self, _lambda: f32, _wo: Vec3) -> f32 {
@@ -355,6 +347,8 @@ impl Material for CLM {
 
 #[cfg(test)]
 mod test {
+    use spectral::{BOUNDED_VISIBLE_RANGE, EXTENDED_VISIBLE_RANGE};
+
     use super::*;
     #[test]
     fn test_clm() {
@@ -410,6 +404,7 @@ mod test {
     const WINDOW_WIDTH: usize = 800;
     #[test]
     fn visualize_clm() {
+        use crate::tonemap::{sRGB, Tonemapper};
         use crate::Film;
         use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Scale, Window, WindowOptions};
         use ordered_float::OrderedFloat;
@@ -417,7 +412,7 @@ mod test {
         use rand::prelude::*;
         use rayon::prelude::*;
         rayon::ThreadPoolBuilder::new()
-            .num_threads(22 as usize)
+            .num_threads(1 as usize)
             .build_global()
             .unwrap();
         let mut window = Window::new(
@@ -457,10 +452,11 @@ mod test {
             vec![
                 Layer::Diffuse { color: white },
                 Layer::Dielectric(ggx_glass.clone()),
-                // Layer::Dielectric(ggx_glass.clone()),
+                Layer::Dielectric(ggx_glass.clone()),
             ],
             20,
         );
+        let mut ct = 1;
         while window.is_open() && !window.is_key_down(Key::Escape) {
             let keys = window.get_keys_pressed(KeyRepeat::No);
 
@@ -469,8 +465,45 @@ mod test {
                     _ => {}
                 }
             }
-            std::thread::sleep(std::time::Duration::new(0, 16000000));
+            // std::thread::sleep(std::time::Duration::new(0, 16000000));
+            film.buffer.par_iter_mut().enumerate().for_each(|(i, e)| {
+                let px = i % width;
+                let py = i / width;
+                let lambda = BOUNDED_VISIBLE_RANGE.sample(random::<f32>());
 
+                // determine wi and wo from px and py
+                let u = px as f32 / width as f32;
+                let v = py as f32 / height as f32;
+
+                let (phi, theta) = (u * PI, v * PI);
+                let wi = Vec3::new(phi.cos(), 0.0, phi.sin());
+                let wo = Vec3::new(theta.cos(), 0.0, theta.sin());
+
+                // let wo = clm.sample(lambda, wi, Sample2D::new_random_sample());
+
+                // println!("{:?} {:?}", wi, wo);
+
+                let (energy, pdf) = clm.bsdf(lambda, wi, wo);
+                let mu = energy / pdf;
+
+                assert!(!mu.is_nan(), "{} {} {}", energy, pdf, mu);
+
+                *e = *e * (ct - 1) as f32 / ct as f32
+                    + XYZColor::from(SingleWavelength::new(lambda, mu.into())) / ct as f32;
+            });
+            ct += 1;
+            let srgb_tonemapper = sRGB::new(&film, 10.0);
+            window_pixels
+                .buffer
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(pixel_idx, v)| {
+                    let y: usize = pixel_idx / width;
+                    let x: usize = pixel_idx - width * y;
+                    let (mapped, _linear) = srgb_tonemapper.map(&film, (x, y));
+                    let [r, g, b, _]: [f32; 4] = mapped.into();
+                    *v = rgb_to_u32((255.0 * r) as u8, (255.0 * g) as u8, (255.0 * b) as u8);
+                });
             window
                 .update_with_buffer(&window_pixels.buffer, WINDOW_WIDTH, WINDOW_HEIGHT)
                 .unwrap();
