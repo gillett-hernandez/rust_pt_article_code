@@ -259,7 +259,7 @@ impl CLM {
                 let (f, pdf) = layer.bsdf(lambda, vert.wi, vert.wo, transport_mode);
 
                 if total_path_pdf > 0.0 {
-                    let addend = total_throughput / total_path_pdf;
+                    let addend = total_throughput;
                     sum += addend;
                     pdf_sum += total_path_pdf;
                     // println!("a {} {}", addend, total_path_pdf);
@@ -270,6 +270,10 @@ impl CLM {
             } else {
                 let nee_index = nee_index as usize;
                 let nee_layer = &self.layers[nee_index];
+                if nee_index >= short_path.0.len() {
+                    // cannot continue bsdf evaluation from this layer since the nee didn't go through.
+                    break;
+                }
                 assert!(
                     nee_index < short_path.0.len(),
                     "LP: {:?}\n SP: {:?}\n\n",
@@ -295,7 +299,7 @@ impl CLM {
                 let (f, pdf) = layer.bsdf(lambda, vert.wi, vert.wo, transport_mode);
 
                 if total_path_pdf > 0.0 {
-                    let addend = total_throughput / total_path_pdf;
+                    let addend = total_throughput;
                     sum += addend;
                     pdf_sum += total_path_pdf;
                     // println!("a2 {} {}", addend, total_path_pdf);
@@ -412,7 +416,7 @@ mod test {
         use rand::prelude::*;
         use rayon::prelude::*;
         rayon::ThreadPoolBuilder::new()
-            .num_threads(1 as usize)
+            .num_threads(22 as usize)
             .build_global()
             .unwrap();
         let mut window = Window::new(
@@ -441,7 +445,8 @@ mod test {
             bounds: Bounds1D::new(390.0, 750.0),
             mode: InterpolationMode::Linear,
         };
-        let ggx_glass = GGX::new(0.00001, glass, 1.0, flat_zero, 1.0, 0);
+        let ggx_glass = GGX::new(0.1, glass.clone(), 1.0, flat_zero.clone(), 1.0, 0);
+        let ggx_glass_rough = GGX::new(0.4, glass.clone(), 1.4, flat_zero.clone(), 1.0, 0);
 
         let white = SPD::Linear {
             signal: vec![0.9],
@@ -451,7 +456,7 @@ mod test {
         let clm = CLM::new(
             vec![
                 Layer::Diffuse { color: white },
-                Layer::Dielectric(ggx_glass.clone()),
+                Layer::Dielectric(ggx_glass_rough.clone()),
                 Layer::Dielectric(ggx_glass.clone()),
             ],
             20,
@@ -477,7 +482,8 @@ mod test {
 
                 let (phi, theta) = (u * PI, v * PI);
                 let wi = Vec3::new(phi.cos(), 0.0, phi.sin());
-                let wo = Vec3::new(theta.cos(), 0.0, theta.sin());
+                // let wo = Vec3::new(theta.cos(), 0.0, theta.sin());
+                let wo = Vec3::Z;
 
                 // let wo = clm.sample(lambda, wi, Sample2D::new_random_sample());
 
@@ -492,7 +498,7 @@ mod test {
                     + XYZColor::from(SingleWavelength::new(lambda, mu.into())) / ct as f32;
             });
             ct += 1;
-            let srgb_tonemapper = sRGB::new(&film, 10.0);
+            let srgb_tonemapper = sRGB::new(&film, 1000.0);
             window_pixels
                 .buffer
                 .par_iter_mut()
