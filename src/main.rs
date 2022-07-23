@@ -2,8 +2,13 @@
 extern crate packed_simd;
 
 use std::f32::INFINITY;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 use packed_simd::f32x4;
+use pbr::ProgressBar;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 
@@ -39,16 +44,6 @@ pub fn output_film(filename: Option<&String>, film: &Film<XYZColor>) {
     srgb_tonemapper.write_to_files(film, &exr_filename, &png_filename);
 }
 
-pub fn hero_from_range(x: f32, bounds: Bounds1D) -> f32x4 {
-    let hero = x * bounds.span();
-    let delta = bounds.span() / 4.0;
-    let mult = f32x4::new(0.0, 1.0, 2.0, 3.0);
-    let wavelengths = bounds.lower + (hero + mult * delta);
-    let sub: f32x4 = wavelengths
-        .gt(f32x4::splat(bounds.upper))
-        .select(f32x4::splat(bounds.span()), f32x4::splat(0.0));
-    wavelengths - sub
-}
 
 fn main() {
     let threads = num_cpus::get();
@@ -118,13 +113,21 @@ fn main() {
         MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
             white.clone(),
             Curve::Linear {
+                signal: vec![1.0],
+                bounds: EXTENDED_VISIBLE_RANGE,
+                mode: InterpolationMode::Linear,
+            },
+        )),
+        MaterialEnum::GGX(ggx_glass.clone()),
+        MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
+            white.clone(),
+            Curve::Linear {
                 signal: vec![10.0],
                 bounds: EXTENDED_VISIBLE_RANGE,
                 mode: InterpolationMode::Linear,
             },
         )),
-        MaterialEnum::ConstPassthrough(ConstPassthrough::new(white.clone())),
-        MaterialEnum::GGX(ggx_glass.clone()),
+        // MaterialEnum::ConstPassthrough(ConstPassthrough::new(white.clone())),
     ];
     let mediums: Vec<MediumEnum> = vec![
         MediumEnum::HenyeyGreensteinHomogeneous(HenyeyGreensteinHomogeneous {
@@ -138,25 +141,51 @@ fn main() {
             sigma_t: black_ish.clone(),
         }),
     ];
-    let scene: Vec<Sphere> = vec![
-        Sphere::new(1.0, Point3::ORIGIN, 3, 0, 0), // subject sphere
-        Sphere::new(10.0, Point3::new(0.0, 0.0, 25.0), 1, 0, 0), // light
-        Sphere::new(100.0, Point3::new(0.0, 0.0, -103.0), 0, 0, 0), // floor
-                                                   // Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
-                                                   // Sphere::new(20.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // large bubble of scattering. inner medium is `1`. outer medium is `0`. surface is transparent shell.
+    let mut scene: Vec<Sphere> = vec![
+        Sphere::new(4.0, Point3::new(0.0, 0.0, 15.0), 3, 0, 0), // light
+        Sphere::new(1000.0, Point3::new(0.0, 0.0, -1000.0), 0, 0, 0), // floor
+                                                                // Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
+                                                                // Sphere::new(20.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // large bubble of scattering. inner medium is `1`. outer medium is `0`. surface is transparent shell.
     ];
+    for _ in 0..100 {
+        let material_id = (rand::random::<f32>() * 3.0) as usize;
+        let x = (rand::random::<f32>() - 0.5) * 100.0;
+        let y = (rand::random::<f32>() - 0.5) * 100.0;
+        scene.push(Sphere::new(1.0, Point3::new(x, y, 1.1), material_id, 0, 0));
+    }
     let camera = ProjectiveCamera::new(
-        Point3::new(-25.0, 0.0, 0.0),
+        Point3::new(-10.0, 10.0, 5.0),
         Point3::ORIGIN,
         Vec3::Z,
-        45.0,
+        60.0,
         1.0,
-        10.0,
+        5.0,
         0.01,
         0.0,
         1.0,
     );
 
+    let total_pixels = w * h;
+    let mut pb = ProgressBar::new((total_pixels) as u64);
+    // progress tracking thread
+
+    let pixel_count = Arc::new(AtomicUsize::new(0));
+    let pixel_count_clone = pixel_count.clone();
+
+    let thread = thread::spawn(move || {
+        let mut local_index = 0;
+        while local_index < total_pixels {
+            let pixels_to_increment = pixel_count_clone.load(Ordering::Relaxed) - local_index;
+            pb.add(pixels_to_increment as u64);
+            local_index += pixels_to_increment;
+
+            thread::sleep(Duration::from_millis(250));
+        }
+
+        pb.finish();
+    });
+
+    let pixel_count_clone = pixel_count.clone();
     film.buffer.par_iter_mut().enumerate().for_each(|(i, e)| {
         let x = i % w;
         let y = i / w;
@@ -355,9 +384,14 @@ fn main() {
 
             assert!(!sum.energy.0.is_nan(), "{:?}", s);
 
+
+
             *e += XYZColor::from(sum);
 
         }
+        pixel_count_clone.fetch_add(1, Ordering::Relaxed);
+
     });
+    thread.join().unwrap();
     output_film(None, &film);
 }

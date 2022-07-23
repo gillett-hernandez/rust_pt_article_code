@@ -1,5 +1,5 @@
 use crate::geometry::{IntersectionData, Primitive, SurfaceIntersectionData};
-use crate::math::{Point3, Vec3, Ray};
+use crate::math::{Point3, Ray, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Sphere {
@@ -56,7 +56,7 @@ impl Primitive for Sphere {
                 return Some(IntersectionData::Surface(SurfaceIntersectionData::new(
                     time,
                     point,
-                    normal,
+                    normal.normalized(),
                     self.material_id,
                     self.outer_medium_id,
                     self.inner_medium_id,
@@ -72,7 +72,7 @@ impl Primitive for Sphere {
                 return Some(IntersectionData::Surface(SurfaceIntersectionData::new(
                     time,
                     point,
-                    normal,
+                    normal.normalized(),
                     self.material_id,
                     self.outer_medium_id,
                     self.inner_medium_id,
