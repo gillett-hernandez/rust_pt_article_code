@@ -54,7 +54,7 @@ fn main() {
     let num_cpus = num_cpus::get();
     let threads = num_cpus;
     rayon::ThreadPoolBuilder::new()
-        .num_threads(threads as usize)
+        .num_threads(22 as usize)
         // .num_threads(threads as usize)
         .build_global()
         .unwrap();
@@ -109,7 +109,7 @@ fn main() {
         bounds: Bounds1D::new(390.0, 750.0),
         mode: InterpolationMode::Linear,
     };
-    let ggx_glass = GGX::new(0.000001, glass, 1.0, flat_zero, 1.0, 1);
+    let ggx_glass = GGX::new(0.001, glass, 1.0, flat_zero, 1.0, 0);
 
     let clm = CLM::new(
         vec![
@@ -133,6 +133,7 @@ fn main() {
             },
         )),
         MaterialEnum::ConstFilm(ConstFilm::new(white.clone())),
+        MaterialEnum::GGX(ggx_glass.clone()),
         MaterialEnum::CLM(clm),
     ];
     let mediums: Vec<MediumEnum> = vec![
@@ -180,6 +181,7 @@ fn main() {
             let mut ray = camera.get_ray(aperture_sample, s, t);
             let mut s = f32x4::splat(0.0);
             let mut throughput = f32x4::splat(1.0);
+            assert!(!throughput.is_nan().any(), "{:?}", throughput);
             // somehow determine what medium the camera ray starts in. assume vacuum for now
             let mut tracked_mediums: Vec<usize> = Vec::new();
             // tracked_mediums.push(1);
@@ -207,12 +209,14 @@ fn main() {
                 // i.e. transmittance along a ray that travels infinitely would almost always be 0.0
                 if nearest_intersection.is_none() {
                     s += throughput * 0.0; // hit env
+                    assert!(s.is_finite().all(), "{:?}, {:?}", s, throughput);
+                    assert!(throughput.is_finite().all(), "{:?}", throughput);
                     break;
                 }
                 // iterate through volumes and sample each, choosing the closest medium scattering (or randomly sampling?)
                 let mut intersection = nearest_intersection.unwrap();
-                let mut closest_p = if let IntersectionData::Surface(s) = intersection {
-                    s.point
+                let mut closest_p = if let IntersectionData::Surface(sid) = intersection {
+                    sid.point
                 } else {
                     panic!();
                 };
@@ -243,7 +247,11 @@ fn main() {
                         combined_throughput *= medium.tr(lambdas.extract(i), ray.origin, closest_p);
                     }
                     throughput = throughput.replace(i, throughput.extract(i) * combined_throughput);
+
+                    assert!(throughput.is_finite().all(), "{:?}", throughput);
                 }
+
+
                 match intersection {
                     IntersectionData::Surface(isect) => {
                         let frame = TangentFrame::from_normal(isect.normal);
@@ -267,18 +275,22 @@ fn main() {
 
                         for i in 0..4 {
                             let (local_bsdf, local_pdf) = mat.bsdf(lambdas.extract(i), wi, wo);
+                            assert!(!local_bsdf.is_nan() && !local_pdf.is_nan(), "{:?} {:?}", local_bsdf, local_pdf);
                             bsdf = bsdf.replace(i, local_bsdf);
                             pdf = pdf.replace(i, local_pdf);
                             emission = emission.replace(i, mat.emission(lambdas.extract(i), wi));
+                            assert!(!emission.is_nan().any(), "{:?}", emission);
                         }
                         if emission.gt(f32x4::splat(0.0)).any() {
                             s += throughput * emission * cos_i;
+                            assert!(s.is_finite().all(), "{:?}, {:?}, {:?}, {:?}", s, throughput, emission, cos_i);
                         }
                         if pdf.extract(0) == 0.0 {
                             break;
                         }
 
-                        throughput *= bsdf * cos_i.abs() / pdf;
+                        throughput *= bsdf * cos_i.abs() / pdf.extract(0);
+                        assert!(throughput.is_finite().all(), "{:?}, {:?}, {:?}, {:?}", throughput, bsdf, cos_i, pdf);
                         if wi.z() * wo.z() > 0.0 {
                             // scattering, so don't mess with volumes
                             // println!("reflect, {}, {}", outer, inner);
@@ -356,10 +368,13 @@ fn main() {
                             throughput = throughput.replace(i, throughput.extract(i) * f_and_pdf);
                         }
                         ray = Ray::new(isect.point, wo);
+                        assert!(!throughput.is_nan().any(), "{:?}", throughput);
                     }
                 }
             }
             let s4 =samples as f32 * 4.0;
+
+            assert!(!s.is_nan().any(), "{:?}", s);
 
             *e += XYZColor::from(SingleWavelength::new(lambdas.extract(0), (s.extract(0) / s4).into()));
             *e += XYZColor::from(SingleWavelength::new(lambdas.extract(1), (s.extract(1) / s4).into()));
