@@ -11,23 +11,22 @@ itertools = "0.10.0"
 rayon = "1.5.0"
 toml = "0.5"
 num_cpus = "1.13.0"
-serde = { version = "1.0.119", features = ["derive"] }
+serde = { version = "1.0.140", features = ["derive"] }
 rand = "0.8"
-image = "0.23.12"
-packed_simd = { version = "0.3.4", package = "packed_simd_2" }
-nalgebra = "0.24.0"
-ordered-float = "2.0.1"
-exr = "0.9.0"
+image = "0.24.3"
+packed_simd = { version = "0.3.8", package = "packed_simd_2" }
+nalgebra = "0.31.0"
+ordered-float = "3.0.0"
+exr = "1.4.2"
 pbr = "1.0.3"
-parking_lot = "0.11.1"
-crossbeam = "0.8.0"
-tobj = "2.0.3"
-minifb = "0.19.1"
-math = {path = "crates/math"}
+# parking_lot = "0.11.1"
+# crossbeam = "0.8.0"
+tobj = "3.2.3"
+minifb = "0.23.0"
 
 [build-dependencies]
-serde = { version = "1.0.119", features = ["derive"] }
-serde_json = "1.0.61"
+serde = { version = "1.0.140", features = ["derive"] }
+serde_json = "1.0.82"
 
 [profile.dev]
 opt-level = 3
