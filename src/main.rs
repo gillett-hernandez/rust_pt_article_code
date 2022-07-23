@@ -3,21 +3,22 @@ extern crate packed_simd;
 
 use std::f32::INFINITY;
 
-use math::{Sample1D, Sample2D};
 use packed_simd::f32x4;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 
 pub mod camera;
-pub mod clm;
+pub mod math;
 pub mod film;
 pub mod material;
 pub mod primitive;
-// pub mod random;
+pub mod random;
 pub mod tonemap;
 
+
+use math::{Sample1D, Sample2D};
+
 use camera::ProjectiveCamera;
-use clm::{Layer, CLM};
 use film::Film;
 use material::{
     ConstDiffuseEmitter, ConstFilm, ConstLambertian, HenyeyGreensteinHomogeneous, Material,
@@ -27,7 +28,7 @@ use math::*;
 use primitive::{
     IntersectionData, MediumIntersectionData, Primitive, Sphere, SurfaceIntersectionData,
 };
-use spectral::{BOUNDED_VISIBLE_RANGE, EXTENDED_VISIBLE_RANGE};
+use math::spectral::{BOUNDED_VISIBLE_RANGE, EXTENDED_VISIBLE_RANGE};
 use tonemap::{sRGB, Tonemapper};
 
 pub fn output_film(filename: Option<&String>, film: &Film<XYZColor>) {
@@ -111,16 +112,6 @@ fn main() {
     };
     let ggx_glass = GGX::new(0.001, glass, 1.0, flat_zero, 1.0, 0);
 
-    let clm = CLM::new(
-        vec![
-            Layer::Diffuse {
-                color: off_white.clone(),
-            },
-            Layer::Dielectric(ggx_glass.clone()),
-            Layer::Dielectric(ggx_glass.clone()),
-        ],
-        10,
-    );
 
     let materials: Vec<MaterialEnum> = vec![
         MaterialEnum::ConstLambertian(ConstLambertian::new(grey.clone())),

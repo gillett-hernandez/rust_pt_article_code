@@ -7,21 +7,15 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-itertools = "0.10.0"
+# itertools = "0.10.0"
 rayon = "1.5.0"
-toml = "0.5"
 num_cpus = "1.13.0"
-serde = { version = "1.0.140", features = ["derive"] }
 rand = "0.8"
 image = "0.24.3"
-packed_simd = { version = "0.3.8", package = "packed_simd_2" }
 nalgebra = "0.31.0"
-ordered-float = "3.0.0"
+# ordered-float = "3.0.0"
 exr = "1.4.2"
 pbr = "1.0.3"
-# parking_lot = "0.11.1"
-# crossbeam = "0.8.0"
-tobj = "3.2.3"
 minifb = "0.23.0"
 
 [build-dependencies]

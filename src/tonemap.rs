@@ -4,7 +4,8 @@ use crate::film::Film;
 use math::XYZColor;
 
 extern crate exr;
-use exr::prelude::rgba_image::*;
+// use exr::prelude::rgba_image::*;
+use exr::prelude::RgbaImage;
 use nalgebra::{Matrix3, Vector3};
 use packed_simd::f32x4;
 
