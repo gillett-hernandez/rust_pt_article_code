@@ -1,13 +1,15 @@
 #![allow(unused, unused_imports)]
 
 use crate::film::Film;
-use math::XYZColor;
+use crate::math::XYZColor;
 
 extern crate exr;
 // use exr::prelude::rgba_image::*;
-use exr::prelude::RgbaImage;
+use exr::prelude::*;
 use nalgebra::{Matrix3, Vector3};
 use packed_simd::f32x4;
+
+use image::{Rgb, RgbImage};
 
 use std::time::Instant;
 
@@ -60,6 +62,7 @@ impl sRGB {
 impl Tonemapper for sRGB {
     fn map(&self, film: &Film<XYZColor>, pixel: (usize, usize)) -> (f32x4, f32x4) {
         let cie_xyz_color = film.at(pixel.0, pixel.1);
+
         let mut scaled_cie_xyz_color = cie_xyz_color * self.factor * self.exposure_adjustment;
         if !scaled_cie_xyz_color.0.is_finite().all() {
             scaled_cie_xyz_color = XYZColor::BLACK;
@@ -95,32 +98,40 @@ impl Tonemapper for sRGB {
     fn write_to_files(&self, film: &Film<XYZColor>, exr_filename: &str, png_filename: &str) {
         let now = Instant::now();
         // generate a color for each pixel position
-        let generate_pixels = |position: Vec2<usize>| {
-            let (_mapped, linear) = self.map(&film, (position.x() as usize, position.y() as usize));
+
+        // exr write
+        write_rgb_file(exr_filename, film.width, film.height, |x, y| {
+            let (_mapped, linear) = self.map(film, (x, y));
             let [r, g, b, _]: [f32; 4] = linear.into();
-            Pixel::rgb(r, g, b)
-        };
+            (r, g, b)
+        });
+        // let generate_pixels = |position: Vec2<usize>| {
+        //     let (_mapped, linear) = self.map(&film, (position.x() as usize, position.y() as usize));
+        //     let [r, g, b, _]: [f32; 4] = linear.into();
+        //     Pixel::rgb(r, g, b)
+        // };
 
-        let image_info = ImageInfo::rgb(
-            (film.width, film.height), // pixel resolution
-            SampleType::F16,           // convert the generated f32 values to f16 while writing
-        );
+        // let image_info = ImageInfo::rgb(
+        //     (film.width, film.height), // pixel resolution
+        //     SampleType::F16,           // convert the generated f32 values to f16 while writing
+        // );
 
-        image_info
-            .write_pixels_to_file(
-                exr_filename,
-                write_options::high(), // higher speed, but higher memory usage
-                &generate_pixels,      // pass our pixel generator
-            )
-            .unwrap();
+        // image_info
+        //     .write_pixels_to_file(
+        //         exr_filename,
+        //         write_options::high(), // higher speed, but higher memory usage
+        //         &generate_pixels,      // pass our pixel generator
+        //     )
+        //     .unwrap();
 
+        // png write
         let mut img: image::RgbImage =
             image::ImageBuffer::new(film.width as u32, film.height as u32);
 
         for (x, y, pixel) in img.enumerate_pixels_mut() {
             //apply tonemap here
 
-            let (mapped, _linear) = self.map(&film, (x as usize, y as usize));
+            let (mapped, _linear) = self.map(film, (x as usize, y as usize));
 
             let [r, g, b, _]: [f32; 4] = mapped.into();
 

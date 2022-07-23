@@ -8,31 +8,30 @@ use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 
 pub mod camera;
-pub mod math;
 pub mod film;
-pub mod material;
-pub mod primitive;
-pub mod random;
+pub mod geometry;
+pub mod materials;
+pub mod math;
 pub mod tonemap;
 
-
-use math::{Sample1D, Sample2D};
+use crate::math::spectral::{SingleWavelength, SpectralPowerDistributionFunction};
+use crate::math::{Sample1D, Sample2D};
 
 use camera::ProjectiveCamera;
 use film::Film;
-use material::{
-    ConstDiffuseEmitter, ConstFilm, ConstLambertian, HenyeyGreensteinHomogeneous, Material,
-    MaterialEnum, Medium, MediumEnum, GGX,
-};
-use math::*;
-use primitive::{
+use geometry::{
     IntersectionData, MediumIntersectionData, Primitive, Sphere, SurfaceIntersectionData,
 };
+use materials::{
+    ConstDiffuseEmitter, ConstLambertian, ConstPassthrough, HenyeyGreensteinHomogeneous, Material,
+    MaterialEnum, Medium, MediumEnum, GGX,
+};
 use math::spectral::{BOUNDED_VISIBLE_RANGE, EXTENDED_VISIBLE_RANGE};
+use math::*;
 use tonemap::{sRGB, Tonemapper};
 
 pub fn output_film(filename: Option<&String>, film: &Film<XYZColor>) {
-    let filename_str = filename.cloned().unwrap_or(String::from("output"));
+    let filename_str = filename.cloned().unwrap_or_else(|| String::from("output"));
     let exr_filename = format!("output/{}.exr", filename_str);
     let png_filename = format!("output/{}.png", filename_str);
 
@@ -52,10 +51,9 @@ pub fn hero_from_range(x: f32, bounds: Bounds1D) -> f32x4 {
 }
 
 fn main() {
-    let num_cpus = num_cpus::get();
-    let threads = num_cpus;
+    let threads = num_cpus::get();
     rayon::ThreadPoolBuilder::new()
-        .num_threads(22 as usize)
+        .num_threads(if threads > 3 { threads - 2 } else { 1 })
         // .num_threads(threads as usize)
         .build_global()
         .unwrap();
@@ -67,17 +65,18 @@ fn main() {
     let samples = 256;
     let bounces = 12;
     let mut film = Film::new(w, h, XYZColor::ZERO);
-    let white = SPD::Linear {
+
+    let white = Curve::Linear {
         signal: vec![1.0],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-    let off_white = SPD::Linear {
+    let off_white = Curve::Linear {
         signal: vec![0.95],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-    let blueish = SPD::Linear {
+    let blueish = Curve::Linear {
         signal: vec![0.9, 0.7, 0.5, 0.4, 0.2, 0.1],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
@@ -88,44 +87,44 @@ fn main() {
         rayleigh.push(100000000.0 * lambda.powf(-4.0));
     }
     println!("{:?}", rayleigh);
-    let rayleigh_color = SPD::Linear {
+    let rayleigh_color = Curve::Linear {
         signal: rayleigh,
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Cubic,
     };
-    let grey = SPD::Linear {
+    let grey = Curve::Linear {
         signal: vec![0.2],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-    let black_ish = SPD::Linear {
+    let black_ish = Curve::Linear {
         signal: vec![0.01],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
 
-    let glass = SPD::Cauchy { a: 1.5, b: 10000.0 };
-    let flat_zero = SPD::Linear {
+    let env_color = blueish.clone();
+
+    let glass = Curve::Cauchy { a: 1.5, b: 10000.0 };
+    let flat_zero = Curve::Linear {
         signal: vec![0.0],
         bounds: Bounds1D::new(390.0, 750.0),
         mode: InterpolationMode::Linear,
     };
     let ggx_glass = GGX::new(0.001, glass, 1.0, flat_zero, 1.0, 0);
 
-
     let materials: Vec<MaterialEnum> = vec![
         MaterialEnum::ConstLambertian(ConstLambertian::new(grey.clone())),
         MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
             white.clone(),
-            SPD::Linear {
+            Curve::Linear {
                 signal: vec![10.0],
                 bounds: EXTENDED_VISIBLE_RANGE,
                 mode: InterpolationMode::Linear,
             },
         )),
-        MaterialEnum::ConstFilm(ConstFilm::new(white.clone())),
+        MaterialEnum::ConstPassthrough(ConstPassthrough::new(white.clone())),
         MaterialEnum::GGX(ggx_glass.clone()),
-        MaterialEnum::CLM(clm),
     ];
     let mediums: Vec<MediumEnum> = vec![
         MediumEnum::HenyeyGreensteinHomogeneous(HenyeyGreensteinHomogeneous {
@@ -163,16 +162,16 @@ fn main() {
         let y = i / w;
 
         for _ in 0..samples {
-            let lambdas = hero_from_range(rand::random::<f32>(), wavelength_range);
+            let mut sum = SingleWavelength::new_from_range(rand::random::<f32>(), wavelength_range);
             let (s, t) = (
                 (x as f32 + rand::random::<f32>()) / (w as f32),
                 (y as f32 + rand::random::<f32>()) / (h as f32),
             );
             let aperture_sample = Sample2D::new_random_sample();
             let mut ray = camera.get_ray(aperture_sample, s, t);
-            let mut s = f32x4::splat(0.0);
-            let mut throughput = f32x4::splat(1.0);
-            assert!(!throughput.is_nan().any(), "{:?}", throughput);
+
+            let mut throughput = 1.0f32;
+
             // somehow determine what medium the camera ray starts in. assume vacuum for now
             let mut tracked_mediums: Vec<usize> = Vec::new();
             // tracked_mediums.push(1);
@@ -199,9 +198,9 @@ fn main() {
                 // TODO: handle case where there's still a tracked medium to potentially scatter off of. instead of just going straight to the environment. maybe this implicitly handles it since global volumes shouldn't be a thing? idk.
                 // i.e. transmittance along a ray that travels infinitely would almost always be 0.0
                 if nearest_intersection.is_none() {
-                    s += throughput * 0.0; // hit env
-                    assert!(s.is_finite().all(), "{:?}, {:?}", s, throughput);
-                    assert!(throughput.is_finite().all(), "{:?}", throughput);
+                    sum.energy.0 += throughput * env_color.evaluate_power(sum.lambda); // hit env
+                    assert!(s.is_finite(), "{:?}, {:?}", s, throughput);
+                    assert!(throughput.is_finite(), "{:?}", throughput);
                     break;
                 }
                 // iterate through volumes and sample each, choosing the closest medium scattering (or randomly sampling?)
@@ -215,7 +214,7 @@ fn main() {
                 for medium_id in tracked_mediums.iter() {
                     let medium = &mediums[*medium_id - 1];
                     let (p, _tr, scatter) =
-                        medium.sample(lambdas.extract(0), ray, Sample1D::new_random_sample());
+                        medium.sample(sum.lambda, ray, Sample1D::new_random_sample());
                     if scatter {
                         // any_scatter = true;
                         let t = (p - ray.origin).norm();
@@ -231,16 +230,16 @@ fn main() {
                         }
                     }
                 }
-                for i in 0..4 {
+
                     let mut combined_throughput = 1.0;
                     for medium_id in tracked_mediums.iter() {
                         let medium = &mediums[*medium_id - 1];
-                        combined_throughput *= medium.tr(lambdas.extract(i), ray.origin, closest_p);
+                        combined_throughput *= medium.tr(sum.lambda, ray.origin, closest_p);
                     }
-                    throughput = throughput.replace(i, throughput.extract(i) * combined_throughput);
+                    throughput *= combined_throughput;
 
-                    assert!(throughput.is_finite().all(), "{:?}", throughput);
-                }
+                    assert!(throughput.is_finite(), "{:?}", throughput);
+
 
 
                 match intersection {
@@ -257,31 +256,24 @@ fn main() {
                         let outer = isect.outer_medium_id;
                         let inner = isect.inner_medium_id;
 
-                        let wo = mat.sample(lambdas.extract(0), wi, Sample2D::new_random_sample());
+                        let wo = mat.sample(sum.lambda, wi, Sample2D::new_random_sample());
 
                         let cos_i = wo.z();
 
-                        let (mut bsdf, mut pdf) = (f32x4::splat(0.0), f32x4::splat(0.0));
-                        let mut emission = f32x4::splat(0.0);
 
-                        for i in 0..4 {
-                            let (local_bsdf, local_pdf) = mat.bsdf(lambdas.extract(i), wi, wo);
-                            assert!(!local_bsdf.is_nan() && !local_pdf.is_nan(), "{:?} {:?}", local_bsdf, local_pdf);
-                            bsdf = bsdf.replace(i, local_bsdf);
-                            pdf = pdf.replace(i, local_pdf);
-                            emission = emission.replace(i, mat.emission(lambdas.extract(i), wi));
-                            assert!(!emission.is_nan().any(), "{:?}", emission);
+                        let (bsdf, pdf) = mat.bsdf(sum.lambda, wi, wo);
+                        let emission = mat.emission(sum.lambda, wi);
+
+                        if emission > 0.0 {
+                            sum.energy.0 += throughput * emission * cos_i;
+                            assert!(sum.energy.0.is_finite(), "{:?}, {:?}, {:?}, {:?}", s, throughput, emission, cos_i);
                         }
-                        if emission.gt(f32x4::splat(0.0)).any() {
-                            s += throughput * emission * cos_i;
-                            assert!(s.is_finite().all(), "{:?}, {:?}, {:?}, {:?}", s, throughput, emission, cos_i);
-                        }
-                        if pdf.extract(0) == 0.0 {
+                        if pdf == 0.0 {
                             break;
                         }
 
-                        throughput *= bsdf * cos_i.abs() / pdf.extract(0);
-                        assert!(throughput.is_finite().all(), "{:?}, {:?}, {:?}, {:?}", throughput, bsdf, cos_i, pdf);
+                        throughput *= bsdf * cos_i.abs() / pdf;
+                        assert!(throughput.is_finite(), "{:?}, {:?}, {:?}, {:?}", throughput, bsdf, cos_i, pdf);
                         if wi.z() * wo.z() > 0.0 {
                             // scattering, so don't mess with volumes
                             // println!("reflect, {}, {}", outer, inner);
@@ -350,27 +342,20 @@ fn main() {
                         let medium = &mediums[isect.medium_id - 1];
                         let wi = -ray.direction;
                         let (wo, f_and_pdf) =
-                            medium.sample_p(lambdas.extract(0), wi, Sample2D::new_random_sample());
+                            medium.sample_p(sum.lambda, wi, Sample2D::new_random_sample());
 
                         // println!("medium interaction {}, wi = {:?}, wo = {:?}", isect.medium_id, wi, wo);
-                        throughput = throughput.replace(0, throughput.extract(0) * f_and_pdf);
-                        for i in 1..4 {
-                            let f_and_pdf = medium.p(lambdas.extract(i), wi, wo);
-                            throughput = throughput.replace(i, throughput.extract(i) * f_and_pdf);
-                        }
+                        throughput *= f_and_pdf;
+
                         ray = Ray::new(isect.point, wo);
-                        assert!(!throughput.is_nan().any(), "{:?}", throughput);
+                        assert!(!throughput.is_nan(), "{:?}", throughput);
                     }
                 }
             }
-            let s4 =samples as f32 * 4.0;
 
-            assert!(!s.is_nan().any(), "{:?}", s);
+            assert!(!sum.energy.0.is_nan(), "{:?}", s);
 
-            *e += XYZColor::from(SingleWavelength::new(lambdas.extract(0), (s.extract(0) / s4).into()));
-            *e += XYZColor::from(SingleWavelength::new(lambdas.extract(1), (s.extract(1) / s4).into()));
-            *e += XYZColor::from(SingleWavelength::new(lambdas.extract(2), (s.extract(2) / s4).into()));
-            *e += XYZColor::from(SingleWavelength::new(lambdas.extract(3), (s.extract(3) / s4).into()));
+            *e += XYZColor::from(sum);
 
         }
     });

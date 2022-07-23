@@ -1,4 +1,4 @@
-use math::*;
+use crate::math::{random::random_in_unit_disk, *};
 
 #[derive(Debug, Clone)]
 pub struct ProjectiveCamera {

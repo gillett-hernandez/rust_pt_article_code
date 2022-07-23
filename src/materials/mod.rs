@@ -1,8 +1,7 @@
-
-
-use math::{
-    random_cosine_direction, random_on_unit_sphere, Point3, Ray, Sample1D, Sample2D,
-    SpectralPowerDistributionFunction, TangentFrame, Vec3, SPD,
+use crate::math::spectral::SpectralPowerDistributionFunction;
+use crate::math::TangentFrame;
+use crate::math::{
+    random_cosine_direction, random_on_unit_sphere, Curve, Point3, Ray, Sample1D, Sample2D, Vec3,
 };
 
 use std::f32::consts::PI;
@@ -16,11 +15,11 @@ pub trait Material {
 
 #[derive(Clone)]
 pub struct ConstLambertian {
-    pub color: SPD,
+    pub color: Curve,
 }
 
 impl ConstLambertian {
-    pub fn new(color: SPD) -> ConstLambertian {
+    pub fn new(color: Curve) -> ConstLambertian {
         ConstLambertian { color }
     }
     pub const NAME: &'static str = "Lambertian";
@@ -48,18 +47,18 @@ unsafe impl Send for ConstLambertian {}
 unsafe impl Sync for ConstLambertian {}
 
 #[derive(Clone)]
-pub struct ConstFilm {
-    pub color: SPD,
+pub struct ConstPassthrough {
+    pub color: Curve,
 }
 
-impl ConstFilm {
-    pub fn new(color: SPD) -> ConstFilm {
-        ConstFilm { color }
+impl ConstPassthrough {
+    pub fn new(color: Curve) -> ConstPassthrough {
+        ConstPassthrough { color }
     }
     pub const NAME: &'static str = "Film";
 }
 
-impl Material for ConstFilm {
+impl Material for ConstPassthrough {
     fn sample(&self, _lambda: f32, wi: Vec3, _s: Sample2D) -> Vec3 {
         -wi
     }
@@ -72,17 +71,17 @@ impl Material for ConstFilm {
     // }
 }
 
-unsafe impl Send for ConstFilm {}
-unsafe impl Sync for ConstFilm {}
+unsafe impl Send for ConstPassthrough {}
+unsafe impl Sync for ConstPassthrough {}
 
 #[derive(Clone)]
 pub struct ConstDiffuseEmitter {
-    pub bounce_color: SPD,
-    pub emission_color: SPD,
+    pub bounce_color: Curve,
+    pub emission_color: Curve,
 }
 
 impl ConstDiffuseEmitter {
-    pub fn new(bounce_color: SPD, emission_color: SPD) -> ConstDiffuseEmitter {
+    pub fn new(bounce_color: Curve, emission_color: Curve) -> ConstDiffuseEmitter {
         ConstDiffuseEmitter {
             bounce_color,
             emission_color,
@@ -218,7 +217,7 @@ fn ggx_lambda(alpha: f32, w: Vec3) -> f32 {
         return 0.0;
     }
     let a2 = alpha * alpha;
-    let w2 = Vec3::from_raw(w.0 * w.0);
+    let w2 = Vec3(w.0 * w.0);
     let c = 1.0 + (a2 * w2.x() + a2 * w2.y()) / w2.z(); // replace a2 with Vec2 for anistropy
     c.sqrt() * 0.5 - 0.5
 }
@@ -299,9 +298,9 @@ fn sample_wh(alpha: f32, wi: Vec3, sample: Sample2D) -> Vec3 {
 #[derive(Debug, Clone)]
 pub struct GGX {
     pub alpha: f32,
-    pub eta: SPD,
-    pub eta_o: f32, // replace with SPD
-    pub kappa: SPD,
+    pub eta: Curve,
+    pub eta_o: f32, // replace with Curve
+    pub kappa: Curve,
     pub permeability: f32,
     pub outer_medium_id: usize,
 }
@@ -309,9 +308,9 @@ pub struct GGX {
 impl GGX {
     pub fn new(
         roughness: f32,
-        eta: SPD,
+        eta: Curve,
         eta_o: f32,
-        kappa: SPD,
+        kappa: Curve,
         permeability: f32,
         outer_medium_id: usize,
     ) -> Self {
@@ -543,43 +542,59 @@ impl Material for GGX {
     }
 }
 
-pub enum MaterialEnum {
-    ConstLambertian(ConstLambertian),
-    ConstDiffuseEmitter(ConstDiffuseEmitter),
-    ConstFilm(ConstFilm),
-    GGX(GGX),
-    CLM(CLM),
+#[macro_export]
+macro_rules! generate_enum {
+    ( $name:ident, $( $s:ident),+) => {
+
+        #[derive(Clone)]
+        pub enum $name {
+            $(
+                $s($s),
+            )+
+        }
+        $(
+            impl From<$s> for $name {
+                fn from(value: $s) -> Self {
+                    $name::$s(value)
+                }
+            }
+        )+
+
+        impl $name {
+            pub fn get_name(&self) -> &str {
+                match self {
+                    $($name::$s(_) => $s::NAME,)+
+                }
+            }
+        }
+
+        impl Material for $name {
+            fn sample(&self, lambda: f32, wi: Vec3, sample: Sample2D) -> Vec3 {
+                match self {
+                    $($name::$s(mat) => mat.sample(lambda, wi, sample),)+
+                }
+            }
+            fn bsdf(&self, lambda: f32, wi: Vec3, wo: Vec3) -> (f32, f32) {
+                match self {
+                    $($name::$s(mat) => mat.bsdf(lambda, wi, wo),)+
+                }
+            }
+            fn emission(&self, lambda: f32, wo: Vec3) -> f32 {
+                match self {
+                    $($name::$s(mat) => mat.emission(lambda, wo),)+
+                }
+            }
+        }
+    };
 }
 
-impl Material for MaterialEnum {
-    fn sample(&self, lambda: f32, wi: Vec3, sample: Sample2D) -> Vec3 {
-        match self {
-            MaterialEnum::ConstLambertian(mat) => mat.sample(lambda, wi, sample),
-            MaterialEnum::ConstDiffuseEmitter(mat) => mat.sample(lambda, wi, sample),
-            MaterialEnum::ConstFilm(mat) => mat.sample(lambda, wi, sample),
-            MaterialEnum::GGX(mat) => mat.sample(lambda, wi, sample),
-            MaterialEnum::CLM(mat) => mat.sample(lambda, wi, sample),
-        }
-    }
-    fn bsdf(&self, lambda: f32, wi: Vec3, wo: Vec3) -> (f32, f32) {
-        match self {
-            MaterialEnum::ConstLambertian(mat) => mat.bsdf(lambda, wi, wo),
-            MaterialEnum::ConstDiffuseEmitter(mat) => mat.bsdf(lambda, wi, wo),
-            MaterialEnum::ConstFilm(mat) => mat.bsdf(lambda, wi, wo),
-            MaterialEnum::GGX(mat) => mat.bsdf(lambda, wi, wo),
-            MaterialEnum::CLM(mat) => mat.bsdf(lambda, wi, wo),
-        }
-    }
-    fn emission(&self, lambda: f32, wo: Vec3) -> f32 {
-        match self {
-            MaterialEnum::ConstLambertian(mat) => mat.emission(lambda, wo),
-            MaterialEnum::ConstDiffuseEmitter(mat) => mat.emission(lambda, wo),
-            MaterialEnum::ConstFilm(mat) => mat.emission(lambda, wo),
-            MaterialEnum::GGX(mat) => mat.emission(lambda, wo),
-            MaterialEnum::CLM(mat) => mat.emission(lambda, wo),
-        }
-    }
-}
+generate_enum!(
+    MaterialEnum,
+    ConstLambertian,
+    ConstDiffuseEmitter,
+    ConstPassthrough,
+    GGX
+);
 
 unsafe impl Send for MaterialEnum {}
 unsafe impl Sync for MaterialEnum {}
@@ -598,8 +613,8 @@ pub fn phase_hg(cos_theta: f32, g: f32) -> f32 {
 
 pub struct HenyeyGreensteinHomogeneous {
     pub g: f32,
-    pub sigma_t: SPD, // transmittance attenuation
-    pub sigma_s: SPD, // scattering attenuation
+    pub sigma_t: Curve, // transmittance attenuation
+    pub sigma_s: Curve, // scattering attenuation
 }
 
 impl Medium for HenyeyGreensteinHomogeneous {
