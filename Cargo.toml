@@ -18,6 +18,7 @@ packed_simd = { version = "0.3.8", package = "packed_simd_2" }
 exr = "1.4.2"
 pbr = "1.0.3"
 minifb = "0.23.0"
+structopt = "0.3.26"
 
 [build-dependencies]
 serde = { version = "1.0.140", features = ["derive"] }

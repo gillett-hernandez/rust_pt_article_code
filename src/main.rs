@@ -11,6 +11,7 @@ use packed_simd::f32x4;
 use pbr::ProgressBar;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
+use structopt::StructOpt;
 
 pub mod camera;
 pub mod film;
@@ -157,6 +158,21 @@ fn generate_and_push_random_materials(
     }
 }
 
+#[derive(StructOpt)]
+#[structopt(rename_all = "kebab-case")]
+struct Opt {
+    #[structopt(long, default_value = "1080")]
+    pub width: usize,
+    #[structopt(long, default_value = "1080")]
+    pub height: usize,
+    #[structopt(long, default_value = "128")]
+    pub samples: usize,
+    #[structopt(long, default_value = "8")]
+    pub bounces: usize,
+}
+
+const NORMAL_OFFSET: f32 = 0.000001;
+
 fn main() {
     let threads = num_cpus::get();
     rayon::ThreadPoolBuilder::new()
@@ -166,11 +182,12 @@ fn main() {
         .unwrap();
 
     // rendering constants, i.e. film size and wavelength bounds
-    let h = 1024;
-    let w = 1024;
+    let opts = Opt::from_args();
+    let h = opts.height;
+    let w = opts.width;
+    let samples = opts.samples;
+    let bounces = opts.bounces;
     let wavelength_range = BOUNDED_VISIBLE_RANGE;
-    let samples = 256;
-    let bounces = 12;
 
     let mut film = Film::new(w, h, XYZColor::ZERO);
 
@@ -238,18 +255,29 @@ fn main() {
         &mut materials,
         new_materials_count,
         EXTENDED_VISIBLE_RANGE,
-        true,
+        false,
     );
     let bag_size_of_random_materials = new_materials_count + 3;
 
     let bright_emitter_id = materials.len();
+
+    let d65 = load_csv(
+        "data/D65.csv",
+        1,
+        InterpolationMode::Linear,
+        |x| x,
+        |x| x / 4.0,
+    )
+    .unwrap();
+
     materials.push(MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
         white.clone(),
-        Curve::Linear {
-            signal: vec![20.0],
-            bounds: EXTENDED_VISIBLE_RANGE,
-            mode: InterpolationMode::Linear,
-        },
+        // Curve::Linear {
+        //     signal: vec![20.0],
+        //     bounds: EXTENDED_VISIBLE_RANGE,
+        //     mode: InterpolationMode::Linear,
+        // },
+        d65,
     )));
 
     let mediums: Vec<MediumEnum> = vec![
@@ -266,15 +294,16 @@ fn main() {
     ];
 
     // the actual scene, only spheres in this case.
-    
+
     let mut scene: Vec<Sphere> = vec![
-        Sphere::new(3.0, Point3::new(0.0, 0.0, 10.0), bright_emitter_id, 0, 0), // light
+        Sphere::new(8.0, Point3::new(0.0, 0.0, 25.0), bright_emitter_id, 0, 0), // light
         Sphere::new(1000.0, Point3::new(0.0, 0.0, -1000.0), 0, 0, 0),           // floor
     ];
     // Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
     // Sphere::new(20.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // large bubble of scattering. inner medium is `1`. outer medium is `0`. surface is transparent shell.
 
     let mut spheres_to_add: Vec<Sphere> = Vec::new();
+    spheres_to_add.push(Sphere::new(4.0, Point3::new(0.0, 0.0, 4.1), 2, 0, 0));
     for i in 0..100 {
         let material_id = (rand::random::<f32>() * bag_size_of_random_materials as f32) as usize;
         loop {
@@ -284,7 +313,9 @@ fn main() {
             let candidate_sphere = Sphere::new(1.0, Point3::new(x, y, 1.1), material_id, 0, 0);
 
             for sphere in &spheres_to_add {
-                if (candidate_sphere.origin - sphere.origin).norm() < 2.0 {
+                if (candidate_sphere.origin - sphere.origin).norm()
+                    < sphere.radius + candidate_sphere.radius
+                {
                     // spheres are overlapping
                     overlapping = true;
                 }
@@ -299,11 +330,11 @@ fn main() {
     scene.extend(spheres_to_add.drain(..));
     let camera = ProjectiveCamera::new(
         Point3::new(-10.0, 10.0, 5.0),
-        Point3::ORIGIN,
+        Point3::new(0.0, 0.0, 2.0),
         Vec3::Z,
         60.0,
         1.0,
-        5.0,
+        14.0,
         0.01,
         0.0,
         1.0,
@@ -404,14 +435,14 @@ fn main() {
                     }
                 }
 
-                    let mut combined_throughput = 1.0;
-                    for medium_id in tracked_mediums.iter() {
-                        let medium = &mediums[*medium_id - 1];
-                        combined_throughput *= medium.tr(sum.lambda, ray.origin, closest_p);
-                    }
-                    throughput *= combined_throughput;
+                let mut combined_throughput = 1.0;
+                for medium_id in tracked_mediums.iter() {
+                    let medium = &mediums[*medium_id - 1];
+                    combined_throughput *= medium.tr(sum.lambda, ray.origin, closest_p);
+                }
+                throughput *= combined_throughput;
 
-                    assert!(throughput.is_finite(), "{:?}", throughput);
+                assert!(throughput.is_finite(), "{:?}", throughput);
 
 
 
@@ -447,10 +478,7 @@ fn main() {
 
                         throughput *= bsdf * cos_i.abs() / pdf;
                         assert!(throughput.is_finite(), "{:?}, {:?}, {:?}, {:?}", throughput, bsdf, cos_i, pdf);
-                        if wi.z() * wo.z() > 0.0 {
-                            // scattering, so don't mess with volumes
-                            // println!("reflect, {}, {}", outer, inner);
-                        } else {
+                        if wi.z() * wo.z() < 0.0 {
                             // transmitting, so remove appropriate medium from list and add new one. only applicable if inner != outer
 
                             if inner != outer {
@@ -504,10 +532,14 @@ fn main() {
                                     }
                                 }
                             }
+                        } else {
+                            // scattering, so don't mess with volumes
+                            // println!("reflect, {}, {}", outer, inner);
                         }
+
                         ray = Ray::new(
                             isect.point
-                                + (if wo.z() > 0.0 { 1.0 } else { -1.0 }) * isect.normal * 0.0001,
+                                + (if wo.z() > 0.0 { 1.0 } else { -1.0 }) * isect.normal * NORMAL_OFFSET,
                             frame.to_world(&wo).normalized(),
                         );
                     }
