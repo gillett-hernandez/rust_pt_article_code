@@ -1,8 +1,6 @@
 use crate::math::spectral::SpectralPowerDistributionFunction;
 use crate::math::TangentFrame;
-use crate::math::{
-    random_cosine_direction, random_on_unit_sphere, Curve, Point3, Ray, Sample1D, Sample2D, Vec3,
-};
+use crate::math::{random_cosine_direction, Curve, Point3, Ray, Sample1D, Sample2D, Vec3};
 
 use std::f32::consts::PI;
 pub trait Material {
@@ -91,7 +89,7 @@ impl ConstDiffuseEmitter {
 }
 
 impl Material for ConstDiffuseEmitter {
-    fn sample(&self, _lambda: f32, wi: Vec3, s: Sample2D) -> Vec3 {
+    fn sample(&self, _lambda: f32, _wi: Vec3, s: Sample2D) -> Vec3 {
         random_cosine_direction(s)
     }
 
@@ -103,7 +101,7 @@ impl Material for ConstDiffuseEmitter {
             (0.0, 0.0)
         }
     }
-    fn emission(&self, lambda: f32, wo: Vec3) -> f32 {
+    fn emission(&self, lambda: f32, _wo: Vec3) -> f32 {
         self.emission_color.evaluate_power(lambda) / PI
     }
 }
@@ -501,7 +499,7 @@ impl GGX {
 }
 
 impl Material for GGX {
-    fn sample(&self, lambda: f32, wi: Vec3, mut sample: Sample2D) -> Vec3 {
+    fn sample(&self, lambda: f32, wi: Vec3, sample: Sample2D) -> Vec3 {
         debug_assert!(sample.x.is_finite() && sample.y.is_finite(), "{:?}", sample);
         let eta_inner = self.eta.evaluate_power(lambda);
         debug_assert!(eta_inner.is_finite(), "{}", lambda);
