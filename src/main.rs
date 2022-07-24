@@ -171,7 +171,7 @@ struct Opt {
     pub bounces: usize,
 }
 
-const NORMAL_OFFSET: f32 = 0.000001;
+const NORMAL_OFFSET: f32 = 0.0001;
 
 fn main() {
     let threads = num_cpus::get();
@@ -358,6 +358,7 @@ fn main() {
         }
 
         pb.finish();
+        println!();
     });
 
     let pixel_count_clone = pixel_count.clone();
