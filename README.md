@@ -7,13 +7,17 @@ current render:
 ![render](./output/output.png)
 
 currently implemented features:
-Spheres and sphere intersection
-Spectral Power Distributions and Reflectance functions (represented as arbitrary curves)
-Parsing curves from files
-Mediums (on branch mediums)
-BSDF sampling
+
+* [x] Spheres and sphere intersection
+* [x] Spectral Power Distributions and Reflectance functions (represented as arbitrary curves)
+* [x] Parsing curves from files
+* [x] Mediums (on branch mediums)
+* [x] BSDF sampling
 
 To implement:
-NEE
-other basic primitives (rects)
-basic texturing, likely using srgb upscaling
+
+* [ ] other basic primitives (rects, to render the classic cornell box scene)
+* [ ] NEE
+* [ ] russian roulette
+* [ ] some acceleration structure (BVH)
+* [ ] basic texturing, likely using srgb upscaling
