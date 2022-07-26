@@ -11,7 +11,7 @@ currently implemented features:
 * [x] Spheres and sphere intersection
 * [x] Spectral Power Distributions and Reflectance functions (represented as arbitrary curves)
 * [x] Parsing curves from files
-* [x] Mediums (on branch mediums)
+* [x] Mediums (on branch `volumes`)
 * [x] BSDF sampling
 
 To implement:
