@@ -37,12 +37,12 @@ use math::{
 use parsing::*;
 use tonemap::{sRGB, Tonemapper};
 
-fn output_film(filename: Option<&String>, film: &Film<XYZColor>) {
+fn output_film(filename: Option<&String>, film: &Film<XYZColor>, key_value: f32) {
     let filename_str = filename.cloned().unwrap_or_else(|| String::from("output"));
     let exr_filename = format!("output/{}.exr", filename_str);
     let png_filename = format!("output/{}.png", filename_str);
 
-    let srgb_tonemapper = sRGB::new(film, 0.18, true);
+    let srgb_tonemapper = sRGB::new(film, key_value, true);
     srgb_tonemapper.write_to_files(film, &exr_filename, &png_filename);
 }
 
@@ -169,6 +169,8 @@ struct Opt {
     pub samples: usize,
     #[structopt(long, default_value = "8")]
     pub bounces: usize,
+    #[structopt(long, default_value = "0.18")]
+    pub key_value: f32,
 }
 
 const NORMAL_OFFSET: f32 = 0.0001;
@@ -202,7 +204,7 @@ fn main() {
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-    let _blueish = Curve::Linear {
+    let blueish = Curve::Linear {
         signal: vec![0.9, 0.7, 0.5, 0.4, 0.2, 0.1],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
@@ -213,12 +215,11 @@ fn main() {
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-    let black_ish = Curve::Linear {
+    let blackish = Curve::Linear {
         signal: vec![0.01],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-
 
     let glass = Curve::Cauchy {
         a: 1.5,
@@ -249,7 +250,6 @@ fn main() {
     );
     let bag_size_of_random_materials = new_materials_count + 3;
 
-
     // main light color and material
     let bright_emitter_id = materials.len();
 
@@ -262,7 +262,7 @@ fn main() {
     )
     .unwrap();
 
-    let fluorescent = spectra("data/fluorescent.spectra", 15.0);
+    let fluorescent = spectra("data/fluorescent.spectra", 5.0);
 
     materials.push(MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
         white.clone(),
@@ -276,7 +276,8 @@ fn main() {
     )));
 
     // environment color
-    let env_color = black_ish.clone(); //blueish.clone();
+    // let env_color = blackish.clone();
+    let env_color = blueish.clone();
 
     // the actual scene, only spheres in this case.
 
@@ -438,5 +439,5 @@ fn main() {
         pixel_count_clone.fetch_add(1, Ordering::Relaxed);
     });
     thread.join().unwrap();
-    output_film(None, &film);
+    output_film(None, &film, opts.key_value);
 }
