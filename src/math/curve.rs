@@ -1,12 +1,10 @@
-use crate::math::{gaussian_f32x4, gaussianf32, Bounds1D, Sample1D, PDF};
+use super::{gaussianf32, Bounds1D, Sample1D, PDF};
 
-use crate::spectral::{
-    blackbody, blackbody_f32x4, max_blackbody_lambda, SingleWavelength,
-    SpectralPowerDistributionFunction,
+use super::spectral::{
+    blackbody, max_blackbody_lambda, SingleWavelength, SpectralPowerDistributionFunction,
 };
 
 use ordered_float::OrderedFloat;
-use packed_simd::f32x4;
 
 const ONE_SUB_EPSILON: f32 = 1.0 - std::f32::EPSILON;
 
@@ -67,7 +65,6 @@ impl Default for Curve {
         Curve::Const(0.0)
     }
 }
-
 
 impl Curve {
     pub fn y_bar() -> Curve {

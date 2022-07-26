@@ -34,19 +34,7 @@ impl SurfaceIntersectionData {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct MediumIntersectionData {
-    pub time: f32,
-    pub point: Point3,
-    pub wi: Vec3,
-    pub medium_id: usize,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum IntersectionData {
-    Surface(SurfaceIntersectionData),
-    Medium(MediumIntersectionData),
-}
+type IntersectionData = SurfaceIntersectionData;
 
 pub trait Primitive {
     fn intersect(&self, r: Ray, t0: f32, t1: f32) -> Option<IntersectionData>;

@@ -53,14 +53,14 @@ impl Primitive for Sphere {
                 debug_assert!((point.w() - 1.0).abs() < 0.000001, "{:?}", point);
                 debug_assert!((self.origin.w() - 1.0).abs() < 0.000001);
                 normal = (point - self.origin) / self.radius;
-                return Some(IntersectionData::Surface(SurfaceIntersectionData::new(
+                return Some(SurfaceIntersectionData::new(
                     time,
                     point,
                     normal.normalized(),
                     self.material_id,
                     self.outer_medium_id,
                     self.inner_medium_id,
-                )));
+                ));
             }
             // time = r.time + (-b + discriminant_sqrt) / a;
             time = (-b + discriminant_sqrt) / a;
@@ -69,14 +69,14 @@ impl Primitive for Sphere {
                 debug_assert!((point.w() - 1.0).abs() < 0.000001, "{:?}", point);
                 debug_assert!((self.origin.w() - 1.0).abs() < 0.000001);
                 normal = (point - self.origin) / self.radius;
-                return Some(IntersectionData::Surface(SurfaceIntersectionData::new(
+                return Some(SurfaceIntersectionData::new(
                     time,
                     point,
                     normal.normalized(),
                     self.material_id,
                     self.outer_medium_id,
                     self.inner_medium_id,
-                )));
+                ));
             }
         }
         None

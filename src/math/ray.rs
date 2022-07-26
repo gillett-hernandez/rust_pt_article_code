@@ -1,4 +1,4 @@
-use crate::math::{Point3, Vec3};
+use super::{Point3, Vec3};
 use std::f32::INFINITY;
 
 #[derive(Copy, Clone, Debug)]

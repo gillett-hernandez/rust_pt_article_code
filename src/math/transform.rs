@@ -4,6 +4,8 @@ use nalgebra;
 use packed_simd::{f32x16, f32x4};
 use std::ops::Mul;
 
+use super::Ray;
+
 // also known as an orthonormal basis.
 #[derive(Copy, Clone, Debug)]
 pub struct TangentFrame {

@@ -20,13 +20,6 @@ pub fn gaussian(x: f64, alpha: f64, mu: f64, sigma1: f64, sigma2: f64) -> f64 {
     alpha * (-(sqrt * sqrt) / 2.0).exp()
 }
 
-pub fn gaussian_f32x4(x: f32x4, alpha: f32, mu: f32, sigma1: f32, sigma2: f32) -> f32x4 {
-    let sqrt = (x - mu)
-        / x.lt(f32x4::splat(mu))
-            .select(f32x4::splat(sigma1), f32x4::splat(sigma2));
-    alpha * (-(sqrt * sqrt) / 2.0).exp()
-}
-
 pub fn w(x: f32, mul: f32, offset: f32, sigma: f32) -> f32 {
     mul * (-(x - offset).powi(2) / sigma).exp() / (sigma * PI).sqrt()
 }
@@ -57,9 +50,9 @@ pub fn direction_to_uv(direction: Vec3) -> (f32, f32) {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::math::random::*;
     use crate::math::random_on_unit_sphere;
     use crate::math::sample::Sample2D;
-    use crate::random::*;
 
     #[test]
     fn test_direction_to_uv() {

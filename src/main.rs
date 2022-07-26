@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use packed_simd::f32x4;
 use pbr::ProgressBar;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
@@ -21,20 +20,20 @@ pub mod math;
 pub mod parsing;
 pub mod tonemap;
 
-use crate::math::spectral::{SingleWavelength, SpectralPowerDistributionFunction};
-use crate::math::{Sample1D, Sample2D};
+use geometry::SurfaceIntersectionData;
 
 use camera::ProjectiveCamera;
 use film::Film;
-use geometry::{
-    IntersectionData, MediumIntersectionData, Primitive, Sphere, SurfaceIntersectionData,
+use geometry::{Primitive, Sphere};
+use materials::{ConstDiffuseEmitter, ConstLambertian, Material, MaterialEnum, GGX};
+
+use math::spectral::{
+    SingleWavelength, SpectralPowerDistributionFunction, BOUNDED_VISIBLE_RANGE,
+    EXTENDED_VISIBLE_RANGE,
 };
-use materials::{
-    ConstDiffuseEmitter, ConstLambertian, ConstPassthrough, HenyeyGreensteinHomogeneous, Material,
-    MaterialEnum, Medium, MediumEnum, GGX,
+use math::{
+    Bounds1D, Curve, InterpolationMode, Point3, Ray, Sample2D, TangentFrame, Vec3, XYZColor,
 };
-use math::spectral::{BOUNDED_VISIBLE_RANGE, EXTENDED_VISIBLE_RANGE};
-use math::*;
 use parsing::*;
 use tonemap::{sRGB, Tonemapper};
 
@@ -97,7 +96,7 @@ fn generate_and_push_random_materials(
 
     let max_roughness = 0.1;
 
-    for i in 0..num {
+    for _ in 0..num {
         let sample = (rand::random::<f32>() * 4.0) as usize;
         match sample {
             3 => {
@@ -198,27 +197,17 @@ fn main() {
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-    let off_white = Curve::Linear {
+    let _off_white = Curve::Linear {
         signal: vec![0.95],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-    let blueish = Curve::Linear {
+    let _blueish = Curve::Linear {
         signal: vec![0.9, 0.7, 0.5, 0.4, 0.2, 0.1],
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
-    let mut rayleigh = Vec::new();
-    for i in 0..100 {
-        let lambda = EXTENDED_VISIBLE_RANGE.sample(i as f32 / 100.0);
-        rayleigh.push(100000000.0 * lambda.powf(-4.0));
-    }
-    println!("{:?}", rayleigh);
-    let rayleigh_color = Curve::Linear {
-        signal: rayleigh,
-        bounds: EXTENDED_VISIBLE_RANGE,
-        mode: InterpolationMode::Cubic,
-    };
+
     let grey = Curve::Linear {
         signal: vec![0.2],
         bounds: EXTENDED_VISIBLE_RANGE,
@@ -230,7 +219,6 @@ fn main() {
         mode: InterpolationMode::Linear,
     };
 
-    let env_color = black_ish.clone(); //blueish.clone();
 
     let glass = Curve::Cauchy {
         a: 1.5,
@@ -261,6 +249,8 @@ fn main() {
     );
     let bag_size_of_random_materials = new_materials_count + 3;
 
+
+    // main light color and material
     let bright_emitter_id = materials.len();
 
     let d65 = load_csv(
@@ -281,22 +271,12 @@ fn main() {
         //     bounds: EXTENDED_VISIBLE_RANGE,
         //     mode: InterpolationMode::Linear,
         // },
-        // d65,
-        fluorescent,
+        d65,
+        // fluorescent,
     )));
 
-    let mediums: Vec<MediumEnum> = vec![
-        MediumEnum::HenyeyGreensteinHomogeneous(HenyeyGreensteinHomogeneous {
-            g: 0.1,
-            sigma_s: off_white.clone(),
-            sigma_t: rayleigh_color.clone(),
-        }),
-        MediumEnum::HenyeyGreensteinHomogeneous(HenyeyGreensteinHomogeneous {
-            g: 0.0,
-            sigma_s: off_white.clone(),
-            sigma_t: black_ish.clone(),
-        }),
-    ];
+    // environment color
+    let env_color = black_ish.clone(); //blueish.clone();
 
     // the actual scene, only spheres in this case.
 
@@ -309,7 +289,7 @@ fn main() {
 
     let mut spheres_to_add: Vec<Sphere> = Vec::new();
     spheres_to_add.push(Sphere::new(4.0, Point3::new(0.0, 0.0, 4.1), 2, 0, 0));
-    for i in 0..100 {
+    for _ in 0..100 {
         let material_id = (rand::random::<f32>() * bag_size_of_random_materials as f32) as usize;
         loop {
             let x = (rand::random::<f32>() - 0.5) * 50.0;
@@ -382,197 +362,80 @@ fn main() {
 
             let mut throughput = 1.0f32;
 
-            // somehow determine what medium the camera ray starts in. assume vacuum for now
-            let mut tracked_mediums: Vec<usize> = Vec::new();
-            // tracked_mediums.push(1);
-
             for _ in 0..bounces {
-                // if tracked_mediums.len() > 0 {
-                //     println!("\n{:?}", tracked_mediums);
-                // }
-                // tracked_mediums.dedup();
-                let mut nearest_intersection: Option<IntersectionData> = None;
+                let mut nearest_intersection: Option<SurfaceIntersectionData> = None;
                 let mut nearest_intersection_time = INFINITY;
 
                 for prim in scene.iter() {
-                    if let Some(IntersectionData::Surface(intersection)) =
-                        prim.intersect(ray, 0.0, INFINITY)
-                    {
+                    if let Some(intersection) = prim.intersect(ray, 0.0, INFINITY) {
                         if intersection.time < nearest_intersection_time {
                             nearest_intersection_time = intersection.time;
-                            nearest_intersection = Some(IntersectionData::Surface(intersection));
+                            nearest_intersection = Some(intersection);
                         }
                     }
                 }
 
-                // TODO: handle case where there's still a tracked medium to potentially scatter off of. instead of just going straight to the environment. maybe this implicitly handles it since global volumes shouldn't be a thing? idk.
-                // i.e. transmittance along a ray that travels infinitely would almost always be 0.0
                 if nearest_intersection.is_none() {
                     sum.energy.0 += throughput * env_color.evaluate_power(sum.lambda); // hit env
                     assert!(s.is_finite(), "{:?}, {:?}", s, throughput);
                     assert!(throughput.is_finite(), "{:?}", throughput);
                     break;
                 }
-                // iterate through volumes and sample each, choosing the closest medium scattering (or randomly sampling?)
-                let mut intersection = nearest_intersection.unwrap();
-                let mut closest_p = if let IntersectionData::Surface(sid) = intersection {
-                    sid.point
-                } else {
-                    panic!();
-                };
-                // let mut any_scatter = false;
-                for medium_id in tracked_mediums.iter() {
-                    let medium = &mediums[*medium_id - 1];
-                    let (p, _tr, scatter) =
-                        medium.sample(sum.lambda, ray, Sample1D::new_random_sample());
-                    if scatter {
-                        // any_scatter = true;
-                        let t = (p - ray.origin).norm();
-                        if t < nearest_intersection_time {
-                            nearest_intersection_time = t;
-                            closest_p = p;
-                            intersection = IntersectionData::Medium(MediumIntersectionData {
-                                time: t,
-                                point: p,
-                                wi: -ray.direction,
-                                medium_id: *medium_id,
-                            });
-                        }
-                    }
-                }
 
-                let mut combined_throughput = 1.0;
-                for medium_id in tracked_mediums.iter() {
-                    let medium = &mediums[*medium_id - 1];
-                    combined_throughput *= medium.tr(sum.lambda, ray.origin, closest_p);
-                }
-                throughput *= combined_throughput;
+                let intersection = nearest_intersection.unwrap();
 
                 assert!(throughput.is_finite(), "{:?}", throughput);
 
+                let frame = TangentFrame::from_normal(intersection.normal);
+                let wi = frame.to_local(&-ray.direction);
+                let mat = &materials[intersection.material_id];
 
+                let wo = mat.sample(sum.lambda, wi, Sample2D::new_random_sample());
 
-                match intersection {
-                    IntersectionData::Surface(isect) => {
-                        let frame = TangentFrame::from_normal(isect.normal);
-                        let wi = frame.to_local(&-ray.direction);
-                        let mat = &materials[isect.material_id];
-                        // let skip_throughput_mod = if let MaterialEnum::ConstFilm(e) = mat {
-                        //     true
-                        // } else {
-                        //     false
-                        // };
+                let cos_i = wo.z();
 
-                        let outer = isect.outer_medium_id;
-                        let inner = isect.inner_medium_id;
+                let (bsdf, pdf) = mat.bsdf(sum.lambda, wi, wo);
+                let emission = mat.emission(sum.lambda, wi);
 
-                        let wo = mat.sample(sum.lambda, wi, Sample2D::new_random_sample());
-
-                        let cos_i = wo.z();
-
-
-                        let (bsdf, pdf) = mat.bsdf(sum.lambda, wi, wo);
-                        let emission = mat.emission(sum.lambda, wi);
-
-                        if emission > 0.0 {
-                            sum.energy.0 += throughput * emission * cos_i;
-                            assert!(sum.energy.0.is_finite(), "{:?}, {:?}, {:?}, {:?}", s, throughput, emission, cos_i);
-                        }
-                        if pdf == 0.0 {
-                            break;
-                        }
-
-                        throughput *= bsdf * cos_i.abs() / pdf;
-                        assert!(throughput.is_finite(), "{:?}, {:?}, {:?}, {:?}", throughput, bsdf, cos_i, pdf);
-                        if wi.z() * wo.z() < 0.0 {
-                            // transmitting, so remove appropriate medium from list and add new one. only applicable if inner != outer
-
-                            if inner != outer {
-                                // println!(
-                                // "transmit, {}, {}, {:?}, {:?}, {:?}",
-                                // outer, inner, wo, isect.normal, tracked_mediums
-                                // );
-                                // print!("{} ", isect.material_id);
-                                if wo.z() < 0.0 {
-                                    // println!("wo.z < 0, wi: {:?}, wo: {:?}", wi, wo);
-                                    // transmitting from outer to inner. thus remove outer and add inner
-                                    if outer != 0 {
-                                        // only remove outer if it's not the Vacuum index.
-                                        match tracked_mediums.iter().position(|e| *e == outer) {
-                                            Some(index) => {
-                                                tracked_mediums.remove(index);
-                                            }
-                                            None => {
-                                                println!(
-                                                    "warning: attempted to transition out of a medium that was not being tracked. tracked mediums already was {:?}. transmit from {} to {}, {:?}, {:?}.",
-                                                    tracked_mediums, outer, inner, wi, wo
-                                                );
-                                            }
-                                        }
-                                    }
-                                    if inner != 0 {
-                                        // let insertion_index = tracked_mediums.binary_search(&inner);
-                                        tracked_mediums.push(inner);
-                                        tracked_mediums.sort_unstable();
-                                    }
-                                } else {
-                                    // println!("wo.z > 0, wi: {:?}, wo: {:?}", wi, wo);
-                                    // transmitting from inner to outer. thus remove inner and add outer, unless outer is vacuum.
-                                    // also don't do anything if inner is vacuum.
-                                    if inner != 0 {
-                                        match tracked_mediums.iter().position(|e| *e == inner) {
-                                            Some(index) => {
-                                                tracked_mediums.remove(index);
-                                            }
-                                            None => {
-                                                println!(
-                                                    "warning: attempted to transition out of a medium that was not being tracked. tracked mediums already was {:?}. transmit from {} to {}, {:?}, {:?}.",
-                                                     tracked_mediums, inner,outer, wi, wo
-                                                );
-                                            }
-                                        }
-                                    }
-                                    if outer != 0 {
-                                        tracked_mediums.push(outer);
-                                        tracked_mediums.sort_unstable();
-                                    }
-                                }
-                            }
-                        } else {
-                            // scattering, so don't mess with volumes
-                            // println!("reflect, {}, {}", outer, inner);
-                        }
-
-                        ray = Ray::new(
-                            isect.point
-                                + (if wo.z() > 0.0 { 1.0 } else { -1.0 }) * isect.normal * NORMAL_OFFSET,
-                            frame.to_world(&wo).normalized(),
-                        );
-                    }
-                    IntersectionData::Medium(isect) => {
-                        let medium = &mediums[isect.medium_id - 1];
-                        let wi = -ray.direction;
-                        let (wo, f_and_pdf) =
-                            medium.sample_p(sum.lambda, wi, Sample2D::new_random_sample());
-
-                        // println!("medium interaction {}, wi = {:?}, wo = {:?}", isect.medium_id, wi, wo);
-                        throughput *= f_and_pdf;
-
-                        ray = Ray::new(isect.point, wo);
-                        assert!(!throughput.is_nan(), "{:?}", throughput);
-                    }
+                if emission > 0.0 {
+                    sum.energy.0 += throughput * emission * cos_i;
+                    assert!(
+                        sum.energy.0.is_finite(),
+                        "{:?}, {:?}, {:?}, {:?}",
+                        s,
+                        throughput,
+                        emission,
+                        cos_i
+                    );
                 }
+                if pdf == 0.0 {
+                    break;
+                }
+
+                throughput *= bsdf * cos_i.abs() / pdf;
+                assert!(
+                    throughput.is_finite(),
+                    "{:?}, {:?}, {:?}, {:?}",
+                    throughput,
+                    bsdf,
+                    cos_i,
+                    pdf
+                );
+
+                ray = Ray::new(
+                    intersection.point
+                        + (if wo.z() > 0.0 { 1.0 } else { -1.0 })
+                            * intersection.normal
+                            * NORMAL_OFFSET,
+                    frame.to_world(&wo).normalized(),
+                );
             }
 
             assert!(!sum.energy.0.is_nan(), "{:?}", s);
 
-
-
             *e += XYZColor::from(sum);
-
         }
         pixel_count_clone.fetch_add(1, Ordering::Relaxed);
-
     });
     thread.join().unwrap();
     output_film(None, &film);

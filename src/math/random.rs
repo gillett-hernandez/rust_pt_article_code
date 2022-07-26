@@ -1,6 +1,5 @@
-use crate::math::sample::*;
-use crate::math::Vec3;
-use std::f32::{consts::PI, INFINITY};
+use super::{sample::*, Vec3};
+use std::f32::consts::PI;
 
 pub fn random_on_unit_sphere(r: Sample2D) -> Vec3 {
     // let u = 1.0 - 2.0 * r.x;
