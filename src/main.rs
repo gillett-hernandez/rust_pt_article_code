@@ -43,7 +43,7 @@ fn output_film(filename: Option<&String>, film: &Film<XYZColor>) {
     let exr_filename = format!("output/{}.exr", filename_str);
     let png_filename = format!("output/{}.png", filename_str);
 
-    let srgb_tonemapper = sRGB::new(film, 1.0);
+    let srgb_tonemapper = sRGB::new(film, 0.18, true);
     srgb_tonemapper.write_to_files(film, &exr_filename, &png_filename);
 }
 
@@ -65,6 +65,7 @@ fn generate_and_push_random_materials(
     num: usize,
     wavelength_bounds: Bounds1D,
     generate_nonphysical_metals_and_dielectrics: bool,
+    max_light_strength: f32,
 ) {
     let flat_zero = Curve::Linear {
         signal: vec![0.0],
@@ -103,7 +104,7 @@ fn generate_and_push_random_materials(
                 // emissive
                 // generate random curve
                 let bounce_color = generate_random_curve(1.0, 20, wavelength_bounds);
-                let emit_color = generate_random_curve(2.0, 20, wavelength_bounds);
+                let emit_color = generate_random_curve(max_light_strength, 20, wavelength_bounds);
                 materials.push(MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
                     bounce_color,
                     emit_color,
@@ -229,7 +230,7 @@ fn main() {
         mode: InterpolationMode::Linear,
     };
 
-    let env_color = blueish.clone();
+    let env_color = black_ish.clone(); //blueish.clone();
 
     let glass = Curve::Cauchy {
         a: 1.5,
@@ -256,6 +257,7 @@ fn main() {
         new_materials_count,
         EXTENDED_VISIBLE_RANGE,
         false,
+        1.0,
     );
     let bag_size_of_random_materials = new_materials_count + 3;
 
@@ -270,6 +272,8 @@ fn main() {
     )
     .unwrap();
 
+    let fluorescent = spectra("data/fluorescent.spectra", 15.0);
+
     materials.push(MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
         white.clone(),
         // Curve::Linear {
@@ -277,7 +281,8 @@ fn main() {
         //     bounds: EXTENDED_VISIBLE_RANGE,
         //     mode: InterpolationMode::Linear,
         // },
-        d65,
+        // d65,
+        fluorescent,
     )));
 
     let mediums: Vec<MediumEnum> = vec![
@@ -318,10 +323,10 @@ fn main() {
                 {
                     // spheres are overlapping
                     overlapping = true;
+                    break;
                 }
             }
             if !overlapping {
-                println!("added sphere {}", i);
                 spheres_to_add.push(candidate_sphere);
                 break;
             }
