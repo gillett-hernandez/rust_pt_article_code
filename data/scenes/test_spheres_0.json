@@ -1,7 +1,7 @@
 {
     "curves_lib": "data/curve_lib.json",
     "materials_lib": "data/material_lib.json",
-    "env_color": "blackish",
+    "env_color": "grey",
     "primitives": [
         {
             "type": "Sphere",

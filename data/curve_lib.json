@@ -43,6 +43,11 @@
         "type": "flat",
         "strength": 0.0
     },
+    "sky_color": {
+        "type": "linear",
+        "filename": "data/curves/sky.spectra",
+        "interpolation_mode": "Cubic"
+    },
     "d65": {
         "type": "csv",
         "filename": "data/curves/D65.csv",
@@ -69,7 +74,7 @@
     "blackbody_4500k": {
         "type": "blackbody",
         "temperature": 4500.0,
-        "strength": 1.0
+        "strength": 100.0
     },
     "copper_eta": {
         "type": "csv",

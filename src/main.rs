@@ -3,7 +3,6 @@ extern crate packed_simd;
 #[macro_use]
 extern crate serde;
 
-use std::collections::HashMap;
 use std::f32::INFINITY;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -42,8 +41,8 @@ use math::{
 use parsing::*;
 use tonemap::{sRGB, Tonemapper};
 
-fn output_film(filename: Option<&String>, film: &Film<XYZColor>, key_value: f32) {
-    let filename_str = filename.cloned().unwrap_or_else(|| String::from("output"));
+fn output_film(filename: Option<String>, film: &Film<XYZColor>, key_value: f32) {
+    let filename_str = filename.unwrap_or_else(|| String::from("output"));
     let exr_filename = format!("output/{}.exr", filename_str);
     let png_filename = format!("output/{}.png", filename_str);
 
@@ -192,6 +191,14 @@ struct Opt {
     pub key_value: f32,
     #[structopt(long)]
     pub add_random_spheres: bool,
+    #[structopt(long)]
+    pub nee: bool,
+    #[structopt(long)]
+    pub rr_min: usize,
+    #[structopt(long)]
+    pub rr_max: usize,
+    #[structopt(long)]
+    pub output: Option<String>,
     pub scene_file: String,
 }
 
@@ -296,7 +303,7 @@ fn main() {
         Point3::new(0.0, 0.0, 2.0),
         Vec3::Z,
         60.0,
-        1.0,
+        w as f32 / h as f32,
         28.0,
         0.01,
         0.0,
@@ -411,10 +418,10 @@ fn main() {
 
             assert!(!sum.energy.0.is_nan(), "{:?}", s);
 
-            *e += XYZColor::from(sum);
+            *e += XYZColor::from(sum) / (samples as f32);
         }
         pixel_count_clone.fetch_add(1, Ordering::Relaxed);
     });
     thread.join().unwrap();
-    output_film(None, &film, opts.key_value);
+    output_film(opts.output, &film, opts.key_value);
 }
