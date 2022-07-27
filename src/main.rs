@@ -190,6 +190,8 @@ struct Opt {
     pub bounces: usize,
     #[structopt(long, default_value = "0.18")]
     pub key_value: f32,
+    #[structopt(long)]
+    pub add_random_spheres: bool,
     pub scene_file: String,
 }
 
@@ -226,66 +228,68 @@ fn main() {
     //     // MaterialEnum::ConstPassthrough(ConstPassthrough::new(white.clone())),
     // ];
 
-    let new_materials_count = 30;
-    // let mut new_materials = Vec::new();
-    generate_and_push_random_materials(
-        &mut scene.materials,
-        new_materials_count,
-        EXTENDED_VISIBLE_RANGE,
-        false,
-        1.0,
-    );
+    if opts.add_random_spheres {
+        let new_materials_count = 30;
+        // let mut new_materials = Vec::new();
+        generate_and_push_random_materials(
+            &mut scene.materials,
+            new_materials_count,
+            EXTENDED_VISIBLE_RANGE,
+            false,
+            1.0,
+        );
 
-    let nonlight_materials = scene
-        .materials
-        .iter()
-        .enumerate()
-        .filter_map(|(id, e)| {
-            if matches!(e, MaterialEnum::ConstLambertian(_) | MaterialEnum::GGX(_)) {
-                Some(id)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    let bag_size_of_random_materials = nonlight_materials.len();
+        let nonlight_materials = scene
+            .materials
+            .iter()
+            .enumerate()
+            .filter_map(|(id, e)| {
+                if matches!(e, MaterialEnum::ConstLambertian(_) | MaterialEnum::GGX(_)) {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let bag_size_of_random_materials = nonlight_materials.len();
 
-    let mut spheres_to_add: Vec<Sphere> = Vec::new();
-    spheres_to_add.push(Sphere::new(4.0, Point3::new(8.0, 0.0, 4.1), 0));
-    spheres_to_add.push(Sphere::new(4.0, Point3::new(0.0, 0.0, 4.1), 0));
-    spheres_to_add.push(Sphere::new(4.0, Point3::new(-8.0, 0.0, 4.1), 0));
-    for _ in 0..100 {
-        let material_id = nonlight_materials
-            [(rand::random::<f32>() * bag_size_of_random_materials as f32) as usize];
-        loop {
-            let x = (rand::random::<f32>() - 0.5) * 70.0;
-            let y = (rand::random::<f32>() - 0.5) * 70.0;
+        let mut spheres_to_add: Vec<Sphere> = Vec::new();
+        spheres_to_add.push(Sphere::new(4.0, Point3::new(8.0, 0.0, 4.1), 0));
+        spheres_to_add.push(Sphere::new(4.0, Point3::new(0.0, 0.0, 4.1), 0));
+        spheres_to_add.push(Sphere::new(4.0, Point3::new(-8.0, 0.0, 4.1), 0));
+        for _ in 0..100 {
+            let material_id = nonlight_materials
+                [(rand::random::<f32>() * bag_size_of_random_materials as f32) as usize];
+            loop {
+                let x = (rand::random::<f32>() - 0.5) * 70.0;
+                let y = (rand::random::<f32>() - 0.5) * 70.0;
 
-            let mut overlapping = false;
-            let candidate_sphere = Sphere::new(1.0, Point3::new(x, y, 1.1), material_id);
+                let mut overlapping = false;
+                let candidate_sphere = Sphere::new(1.0, Point3::new(x, y, 1.1), material_id);
 
-            for sphere in &spheres_to_add {
-                if (candidate_sphere.origin - sphere.origin).norm()
-                    < sphere.radius + candidate_sphere.radius
-                {
-                    // spheres are overlapping
-                    overlapping = true;
+                for sphere in &spheres_to_add {
+                    if (candidate_sphere.origin - sphere.origin).norm()
+                        < sphere.radius + candidate_sphere.radius
+                    {
+                        // spheres are overlapping
+                        overlapping = true;
+                        break;
+                    }
+                }
+                if !overlapping {
+                    spheres_to_add.push(candidate_sphere);
                     break;
                 }
             }
-            if !overlapping {
-                spheres_to_add.push(candidate_sphere);
-                break;
-            }
         }
+        spheres_to_add.reverse();
+        // clear the previously added placeholder spheres, truncating down to 100
+        spheres_to_add.truncate(100);
+        // add new spheres to the scene
+        scene
+            .primitives
+            .extend(spheres_to_add.drain(..).map(|e| e.into()));
     }
-    spheres_to_add.reverse();
-    // clear the previously added placeholder spheres, truncating down to 100
-    spheres_to_add.truncate(100);
-    // add new spheres to the scene
-    scene
-        .primitives
-        .extend(spheres_to_add.drain(..).map(|e| e.into()));
 
     let camera = ProjectiveCamera::new(
         Point3::new(-20.0, 20.0, 5.0),
