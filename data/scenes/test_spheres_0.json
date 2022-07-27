@@ -16,6 +16,26 @@
         {
             "type": "Sphere",
             "origin": [
+                8.0,
+                0.0,
+                4.1
+            ],
+            "radius": 4.0,
+            "material": "lambertian_green"
+        },
+        {
+            "type": "Sphere",
+            "origin": [
+                -8.0,
+                0.0,
+                4.1
+            ],
+            "radius": 4.0,
+            "material": "ggx_brass"
+        },
+        {
+            "type": "Sphere",
+            "origin": [
                 0.0,
                 0.0,
                 -1000.0

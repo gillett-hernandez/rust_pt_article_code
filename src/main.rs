@@ -3,6 +3,7 @@ extern crate packed_simd;
 #[macro_use]
 extern crate serde;
 
+use std::collections::HashMap;
 use std::f32::INFINITY;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -226,28 +227,40 @@ fn main() {
     // ];
 
     let new_materials_count = 30;
-    let mut new_materials = Vec::new();
+    // let mut new_materials = Vec::new();
     generate_and_push_random_materials(
-        &mut new_materials,
+        &mut scene.materials,
         new_materials_count,
         EXTENDED_VISIBLE_RANGE,
         false,
         1.0,
     );
 
-    let bag_size_of_random_materials = new_materials_count
-        + scene
-            .materials
-            .iter()
-            .filter(|e| matches!(e, MaterialEnum::ConstLambertian(_) | MaterialEnum::GGX(_)))
-            .count();
+    let nonlight_materials = scene
+        .materials
+        .iter()
+        .enumerate()
+        .filter_map(|(id, e)| {
+            if matches!(e, MaterialEnum::ConstLambertian(_) | MaterialEnum::GGX(_)) {
+                Some(id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    let bag_size_of_random_materials = nonlight_materials.len();
+
     let mut spheres_to_add: Vec<Sphere> = Vec::new();
-    spheres_to_add.push(Sphere::new(4.0, Point3::new(0.0, 0.0, 4.1), 2));
+    spheres_to_add.push(Sphere::new(4.0, Point3::new(8.0, 0.0, 4.1), 0));
+    spheres_to_add.push(Sphere::new(4.0, Point3::new(0.0, 0.0, 4.1), 0));
+    spheres_to_add.push(Sphere::new(4.0, Point3::new(-8.0, 0.0, 4.1), 0));
     for _ in 0..100 {
-        let material_id = (rand::random::<f32>() * bag_size_of_random_materials as f32) as usize;
+        let material_id = nonlight_materials
+            [(rand::random::<f32>() * bag_size_of_random_materials as f32) as usize];
         loop {
-            let x = (rand::random::<f32>() - 0.5) * 50.0;
-            let y = (rand::random::<f32>() - 0.5) * 50.0;
+            let x = (rand::random::<f32>() - 0.5) * 70.0;
+            let y = (rand::random::<f32>() - 0.5) * 70.0;
+
             let mut overlapping = false;
             let candidate_sphere = Sphere::new(1.0, Point3::new(x, y, 1.1), material_id);
 
@@ -266,17 +279,21 @@ fn main() {
             }
         }
     }
-    // scene
-    //     .primitives
-    //     .extend(spheres_to_add.drain(..).map(|e| e.into()));
+    spheres_to_add.reverse();
+    // clear the previously added placeholder spheres, truncating down to 100
+    spheres_to_add.truncate(100);
+    // add new spheres to the scene
+    scene
+        .primitives
+        .extend(spheres_to_add.drain(..).map(|e| e.into()));
 
     let camera = ProjectiveCamera::new(
-        Point3::new(-10.0, 10.0, 5.0),
+        Point3::new(-20.0, 20.0, 5.0),
         Point3::new(0.0, 0.0, 2.0),
         Vec3::Z,
         60.0,
         1.0,
-        14.0,
+        28.0,
         0.01,
         0.0,
         1.0,

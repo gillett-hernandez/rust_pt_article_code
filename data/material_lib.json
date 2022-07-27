@@ -38,7 +38,7 @@
         "ior": "copper_eta",
         "kappa": "copper_kappa",
         "ior_outer": "air_eta",
-        "permeability": 1.0,
+        "permeability": 0.0,
         "roughness": 0.01
     },
     "ggx_gold": {
@@ -46,7 +46,7 @@
         "ior": "gold_eta",
         "kappa": "gold_kappa",
         "ior_outer": "air_eta",
-        "permeability": 1.0,
+        "permeability": 0.0,
         "roughness": 0.01
     },
     "ggx_brass": {
@@ -54,7 +54,7 @@
         "ior": "brass_eta",
         "kappa": "brass_kappa",
         "ior_outer": "air_eta",
-        "permeability": 1.0,
+        "permeability": 0.0,
         "roughness": 0.01
     }
 }
