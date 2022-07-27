@@ -13,6 +13,7 @@ currently implemented features:
 * [x] Parsing curves from files
 * [x] Mediums (on branch `volumes`)
 * [x] BSDF sampling
+* [x] basic scene file representation (and associated automatic curve parsing from files)
 
 To implement:
 
