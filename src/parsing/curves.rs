@@ -1,8 +1,10 @@
+use crate::math::spectral::EXTENDED_VISIBLE_RANGE;
 use crate::math::*;
+use std::collections::HashMap;
+use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use std::error::Error;
 
 pub fn spectra(filename: &str, strength: f32) -> Curve {
     // defaults to cubic interpolation mode
@@ -169,4 +171,132 @@ where
     let curve = parse_linear(&buf, interpolation_mode, domain_func, range_func)?;
     // let kappa = parse_tabulated_curve_from_csv(buf.as_ref(), 2, InterpolationMode::Cubic, func)?;
     Ok(curve)
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DomainMapping {
+    pub x_offset: Option<f32>,
+    pub x_scale: Option<f32>,
+    pub y_offset: Option<f32>,
+    pub y_scale: Option<f32>,
+}
+impl Default for DomainMapping {
+    // default domain mapping is the identity mapping. all inputs are unchanged upon being mapped.
+    fn default() -> Self {
+        DomainMapping {
+            x_offset: Some(0.0),
+            x_scale: Some(1.0),
+            y_offset: Some(0.0),
+            y_scale: Some(1.0),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum CurveData {
+    Blackbody {
+        temperature: f32,
+        strength: f32,
+    },
+    Linear {
+        filename: String,
+        domain_mapping: Option<DomainMapping>,
+        interpolation_mode: InterpolationMode,
+    },
+    CSV {
+        filename: String,
+        column: usize,
+        domain_mapping: Option<DomainMapping>,
+        interpolation_mode: InterpolationMode,
+    },
+    Flat {
+        strength: f32,
+    },
+    Cauchy {
+        a: f32,
+        b: f32,
+    },
+}
+impl From<CurveData> for Curve {
+    fn from(curve: CurveData) -> Self {
+        match curve {
+            CurveData::Blackbody {
+                temperature,
+                strength,
+            } => Curve::Blackbody {
+                temperature,
+                boost: strength,
+            },
+            CurveData::Linear {
+                filename,
+                domain_mapping,
+                interpolation_mode,
+            } => {
+                let domain_mapping = domain_mapping.unwrap_or_default();
+                println!("attempting to parse and load linear file at {:?}", filename);
+                let maybe_curve = load_linear(
+                    &filename,
+                    |x| {
+                        (x - domain_mapping.x_offset.unwrap_or(0.0))
+                            * domain_mapping.x_scale.unwrap_or(1.0)
+                    },
+                    |y| {
+                        (y - domain_mapping.y_offset.unwrap_or(0.0))
+                            * domain_mapping.y_scale.unwrap_or(1.0)
+                    },
+                    interpolation_mode,
+                );
+                let curve = maybe_curve.expect("loading linear data failed");
+                println!("parsed linear curve");
+                curve
+            }
+            CurveData::Cauchy { a, b } => Curve::Cauchy { a, b },
+            CurveData::CSV {
+                filename,
+                column,
+                domain_mapping,
+                interpolation_mode,
+            } => {
+                let domain_mapping = domain_mapping.unwrap_or_default();
+                println!("attempting to parse and load csv at file {:?}", filename);
+                let maybe_curve = load_csv(
+                    &filename,
+                    column,
+                    interpolation_mode,
+                    |x| {
+                        (x - domain_mapping.x_offset.unwrap_or(0.0))
+                            * domain_mapping.x_scale.unwrap_or(1.0)
+                    },
+                    |y| {
+                        (y - domain_mapping.y_offset.unwrap_or(0.0))
+                            * domain_mapping.y_scale.unwrap_or(1.0)
+                    },
+                );
+                let curve = maybe_curve.expect("loading tabulated data failed");
+                println!("parsed tabulated curve");
+                curve
+            }
+            CurveData::Flat { strength } => Curve::Linear {
+                signal: vec![strength],
+                bounds: EXTENDED_VISIBLE_RANGE,
+                mode: InterpolationMode::Linear,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CurveDataOrReference {
+    Literal(CurveData),
+    Reference(String),
+}
+impl CurveDataOrReference {
+    pub fn resolve(&self, curves_mapping: &HashMap<String, Curve>) -> Option<Curve> {
+        match self {
+            Self::Literal(inner) => Some(inner.clone().into()),
+            Self::Reference(name) => curves_mapping.get(name).cloned(),
+        }
+    }
 }

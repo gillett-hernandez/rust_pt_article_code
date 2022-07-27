@@ -1,0 +1,22 @@
+{
+    "curves_lib": {
+        "cornell_white": {
+            "type": "csv",
+            "filename": "data/curves/cornell.csv",
+            "column": 1,
+            "interpolation_mode": "Cubic"
+        },
+        "blackish": {
+            "type": "flat",
+            "strength": 0.01
+        }
+    },
+    "materials_lib": {
+        "lambertian_white": {
+            "type": "Lambertian",
+            "color": "cornell_white"
+        }
+    },
+    "env_color": "blackish",
+    "primitives": []
+}

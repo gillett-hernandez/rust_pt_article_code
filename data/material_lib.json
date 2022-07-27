@@ -1,0 +1,60 @@
+{
+    "lambertian_white": {
+        "type": "Lambertian",
+        "color": "cornell_white"
+    },
+    "lambertian_red": {
+        "type": "Lambertian",
+        "color": "cornell_red"
+    },
+    "lambertian_green": {
+        "type": "Lambertian",
+        "color": "cornell_green"
+    },
+    "lambertian_grey": {
+        "type": "Lambertian",
+        "color": "grey"
+    },
+    "lambertian_light": {
+        "type": "DiffuseEmitter",
+        "emit_color": "cornell_light",
+        "bounce_color": "cornell_white"
+    },
+    "diffuse_light_warm": {
+        "type": "DiffuseEmitter",
+        "emit_color": "blackbody_4500k",
+        "bounce_color": "off_white"
+    },
+    "ggx_glass_dispersive": {
+        "type": "GGX",
+        "ior": "dispersive_glass_eta",
+        "kappa": "flat_zero",
+        "ior_outer": "air_eta",
+        "permeability": 1.0,
+        "roughness": 0.01
+    },
+    "ggx_copper": {
+        "type": "GGX",
+        "ior": "copper_eta",
+        "kappa": "copper_kappa",
+        "ior_outer": "air_eta",
+        "permeability": 1.0,
+        "roughness": 0.01
+    },
+    "ggx_gold": {
+        "type": "GGX",
+        "ior": "gold_eta",
+        "kappa": "gold_kappa",
+        "ior_outer": "air_eta",
+        "permeability": 1.0,
+        "roughness": 0.01
+    },
+    "ggx_brass": {
+        "type": "GGX",
+        "ior": "brass_eta",
+        "kappa": "brass_kappa",
+        "ior_outer": "air_eta",
+        "permeability": 1.0,
+        "roughness": 0.01
+    }
+}

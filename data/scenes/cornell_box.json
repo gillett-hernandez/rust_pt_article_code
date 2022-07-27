@@ -1,0 +1,6 @@
+{
+    "curves_lib": "data/curve_lib.json",
+    "materials_lib": "data/material_lib.json",
+    "env_color": "blackish",
+    "primitives": []
+}

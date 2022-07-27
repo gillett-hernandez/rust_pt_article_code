@@ -16,7 +16,7 @@ pub enum Op {
     Mul,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone, Serialize, Deserialize)]
 pub enum InterpolationMode {
     Linear,
     Nearest,

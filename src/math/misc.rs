@@ -50,7 +50,6 @@ pub fn direction_to_uv(direction: Vec3) -> (f32, f32) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::math::random::*;
     use crate::math::random_on_unit_sphere;
     use crate::math::sample::Sample2D;
 
@@ -79,7 +78,12 @@ mod test {
         let uv = (rand::random::<f32>(), rand::random::<f32>());
         let direction = uv_to_direction(uv);
         let uv2 = direction_to_uv(direction);
-        assert!(uv == uv2, "{:?} {:?}", uv, uv2);
+        assert!(
+            (uv2.0 - uv.0).hypot(uv2.1 - uv.1) < 0.000001,
+            "{:?} {:?}",
+            uv,
+            uv2
+        );
 
         let direction = random_on_unit_sphere(Sample2D::new_random_sample());
         let uv = direction_to_uv(direction);

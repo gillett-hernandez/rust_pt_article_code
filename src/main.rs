@@ -1,12 +1,16 @@
 #[macro_use]
 extern crate packed_simd;
+#[macro_use]
+extern crate serde;
 
 use std::f32::INFINITY;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use parsing::curves::load_ior_and_kappa;
 use pbr::ProgressBar;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
@@ -24,7 +28,7 @@ use geometry::SurfaceIntersectionData;
 
 use camera::ProjectiveCamera;
 use film::Film;
-use geometry::{Primitive, Sphere};
+use geometry::{Intersect, Sphere};
 use materials::{ConstDiffuseEmitter, ConstLambertian, Material, MaterialEnum, GGX};
 
 use math::spectral::{
@@ -71,16 +75,24 @@ fn generate_and_push_random_materials(
         bounds: EXTENDED_VISIBLE_RANGE,
         mode: InterpolationMode::Linear,
     };
+
+    let air_ior = Curve::Cauchy {
+        a: 1.0002724293,
+        b: 1.64748969205,
+    };
+
     let mut ggx_db = Vec::new();
 
     // convert micrometers to nanometers
-    let ior_and_kappa = load_ior_and_kappa("data/brass_90Cu10Zn.csv", |x| x * 1000.0).unwrap();
+    let ior_and_kappa =
+        load_ior_and_kappa("data/curves/brass_90Cu10Zn.csv", |x| x * 1000.0).unwrap();
     ggx_db.push((ior_and_kappa.0, ior_and_kappa.1, 0.0f32));
 
-    let ior_and_kappa = load_ior_and_kappa("data/gold.csv", |x| x * 1000.0).unwrap();
+    let ior_and_kappa = load_ior_and_kappa("data/curves/gold.csv", |x| x * 1000.0).unwrap();
     ggx_db.push((ior_and_kappa.0, ior_and_kappa.1, 0.0f32));
 
-    let ior_and_kappa = load_ior_and_kappa("data/copper-mcpeak.csv", |x| x * 1000.0).unwrap();
+    let ior_and_kappa =
+        load_ior_and_kappa("data/curves/copper-mcpeak.csv", |x| x * 1000.0).unwrap();
     ggx_db.push((ior_and_kappa.0, ior_and_kappa.1, 0.0f32));
 
     ggx_db.push((Curve::Cauchy { a: 1.5, b: 10000.0 }, flat_zero.clone(), 1.0));
@@ -116,7 +128,11 @@ fn generate_and_push_random_materials(
                 let kappa = generate_random_curve(5.0, 5, wavelength_bounds);
                 let roughness = Bounds1D::new(0.0, max_roughness).sample(rand::random());
                 materials.push(MaterialEnum::GGX(GGX::new(
-                    roughness, eta, 1.0, kappa, 0.0, 0,
+                    roughness,
+                    eta,
+                    air_ior.clone(),
+                    kappa,
+                    0.0,
                 )));
             }
             1 if generate_nonphysical_metals_and_dielectrics => {
@@ -132,10 +148,9 @@ fn generate_and_push_random_materials(
                 materials.push(MaterialEnum::GGX(GGX::new(
                     roughness,
                     curve,
-                    1.0,
+                    air_ior.clone(),
                     flat_zero.clone(),
                     1.0,
-                    0,
                 )));
             }
             1 | 2 => {
@@ -144,7 +159,11 @@ fn generate_and_push_random_materials(
                 let choice = (rand::random::<f32>() * ggx_db.len() as f32) as usize;
                 let (eta, kappa, perm) = ggx_db[choice].clone();
                 materials.push(MaterialEnum::GGX(GGX::new(
-                    roughness, eta, 1.0, kappa, perm, 0,
+                    roughness,
+                    eta,
+                    air_ior.clone(),
+                    kappa,
+                    perm,
                 )));
             }
             _ => {
@@ -154,7 +173,6 @@ fn generate_and_push_random_materials(
                 materials.push(MaterialEnum::ConstLambertian(ConstLambertian::new(color)));
             }
         }
-        // generate random color
     }
 }
 
@@ -171,6 +189,7 @@ struct Opt {
     pub bounces: usize,
     #[structopt(long, default_value = "0.18")]
     pub key_value: f32,
+    pub scene_file: String,
 }
 
 const NORMAL_OFFSET: f32 = 0.0001;
@@ -193,110 +212,44 @@ fn main() {
 
     let mut film = Film::new(w, h, XYZColor::ZERO);
 
-    // commonly used colors
-    let white = Curve::Linear {
-        signal: vec![1.0],
-        bounds: EXTENDED_VISIBLE_RANGE,
-        mode: InterpolationMode::Linear,
-    };
-    let _off_white = Curve::Linear {
-        signal: vec![0.95],
-        bounds: EXTENDED_VISIBLE_RANGE,
-        mode: InterpolationMode::Linear,
-    };
-    let blueish = Curve::Linear {
-        signal: vec![0.9, 0.7, 0.5, 0.4, 0.2, 0.1],
-        bounds: EXTENDED_VISIBLE_RANGE,
-        mode: InterpolationMode::Linear,
-    };
+    let mut scene: Scene = load_json::<SceneData>(PathBuf::from(opts.scene_file))
+        .expect("failed to parse scene")
+        .into();
 
-    let grey = Curve::Linear {
-        signal: vec![0.2],
-        bounds: EXTENDED_VISIBLE_RANGE,
-        mode: InterpolationMode::Linear,
-    };
-    let blackish = Curve::Linear {
-        signal: vec![0.01],
-        bounds: EXTENDED_VISIBLE_RANGE,
-        mode: InterpolationMode::Linear,
-    };
+    // let ggx_glass = GGX::new(0.001, glass, air_ior, flat_zero, 1.0);
 
-    let glass = Curve::Cauchy {
-        a: 1.5,
-        b: 100000.0,
-    };
-    let flat_zero = Curve::Linear {
-        signal: vec![0.0],
-        bounds: EXTENDED_VISIBLE_RANGE,
-        mode: InterpolationMode::Linear,
-    };
-
-    let ggx_glass = GGX::new(0.001, glass, 1.0, flat_zero, 1.0, 0);
-
-    let mut materials: Vec<MaterialEnum> = vec![
-        MaterialEnum::ConstLambertian(ConstLambertian::new(grey.clone())),
-        MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(white.clone(), white.clone())),
-        MaterialEnum::GGX(ggx_glass.clone()),
-        // MaterialEnum::ConstPassthrough(ConstPassthrough::new(white.clone())),
-    ];
+    // let mut materials: Vec<MaterialEnum> = vec![
+    //     MaterialEnum::ConstLambertian(ConstLambertian::new(grey.clone())),
+    //     MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(white.clone(), white.clone())),
+    //     MaterialEnum::GGX(ggx_glass.clone()),
+    //     // MaterialEnum::ConstPassthrough(ConstPassthrough::new(white.clone())),
+    // ];
 
     let new_materials_count = 30;
+    let mut new_materials = Vec::new();
     generate_and_push_random_materials(
-        &mut materials,
+        &mut new_materials,
         new_materials_count,
         EXTENDED_VISIBLE_RANGE,
         false,
         1.0,
     );
-    let bag_size_of_random_materials = new_materials_count + 3;
 
-    // main light color and material
-    let bright_emitter_id = materials.len();
-
-    let d65 = load_csv(
-        "data/D65.csv",
-        1,
-        InterpolationMode::Linear,
-        |x| x,
-        |x| x / 4.0,
-    )
-    .unwrap();
-
-    let fluorescent = spectra("data/fluorescent.spectra", 5.0);
-
-    materials.push(MaterialEnum::ConstDiffuseEmitter(ConstDiffuseEmitter::new(
-        white.clone(),
-        // Curve::Linear {
-        //     signal: vec![20.0],
-        //     bounds: EXTENDED_VISIBLE_RANGE,
-        //     mode: InterpolationMode::Linear,
-        // },
-        d65,
-        // fluorescent,
-    )));
-
-    // environment color
-    // let env_color = blackish.clone();
-    let env_color = blueish.clone();
-
-    // the actual scene, only spheres in this case.
-
-    let mut scene: Vec<Sphere> = vec![
-        Sphere::new(8.0, Point3::new(0.0, 0.0, 25.0), bright_emitter_id, 0, 0), // light
-        Sphere::new(1000.0, Point3::new(0.0, 0.0, -1000.0), 0, 0, 0),           // floor
-    ];
-    // Sphere::new(3.0, Point3::new(0.0, 0.0, 0.0), 2, 1, 2), // smaller bubble of scattering. inner medium is `2`. outer medium is `1`. surface is transparent shell.
-    // Sphere::new(20.0, Point3::new(0.0, 0.0, 0.0), 2, 0, 1), // large bubble of scattering. inner medium is `1`. outer medium is `0`. surface is transparent shell.
-
+    let bag_size_of_random_materials = new_materials_count
+        + scene
+            .materials
+            .iter()
+            .filter(|e| matches!(e, MaterialEnum::ConstLambertian(_) | MaterialEnum::GGX(_)))
+            .count();
     let mut spheres_to_add: Vec<Sphere> = Vec::new();
-    spheres_to_add.push(Sphere::new(4.0, Point3::new(0.0, 0.0, 4.1), 2, 0, 0));
+    spheres_to_add.push(Sphere::new(4.0, Point3::new(0.0, 0.0, 4.1), 2));
     for _ in 0..100 {
         let material_id = (rand::random::<f32>() * bag_size_of_random_materials as f32) as usize;
         loop {
             let x = (rand::random::<f32>() - 0.5) * 50.0;
             let y = (rand::random::<f32>() - 0.5) * 50.0;
             let mut overlapping = false;
-            let candidate_sphere = Sphere::new(1.0, Point3::new(x, y, 1.1), material_id, 0, 0);
+            let candidate_sphere = Sphere::new(1.0, Point3::new(x, y, 1.1), material_id);
 
             for sphere in &spheres_to_add {
                 if (candidate_sphere.origin - sphere.origin).norm()
@@ -313,7 +266,10 @@ fn main() {
             }
         }
     }
-    scene.extend(spheres_to_add.drain(..));
+    // scene
+    //     .primitives
+    //     .extend(spheres_to_add.drain(..).map(|e| e.into()));
+
     let camera = ProjectiveCamera::new(
         Point3::new(-10.0, 10.0, 5.0),
         Point3::new(0.0, 0.0, 2.0),
@@ -367,7 +323,7 @@ fn main() {
                 let mut nearest_intersection: Option<SurfaceIntersectionData> = None;
                 let mut nearest_intersection_time = INFINITY;
 
-                for prim in scene.iter() {
+                for prim in scene.primitives.iter() {
                     if let Some(intersection) = prim.intersect(ray, 0.0, INFINITY) {
                         if intersection.time < nearest_intersection_time {
                             nearest_intersection_time = intersection.time;
@@ -377,7 +333,7 @@ fn main() {
                 }
 
                 if nearest_intersection.is_none() {
-                    sum.energy.0 += throughput * env_color.evaluate_power(sum.lambda); // hit env
+                    sum.energy.0 += throughput * scene.env_color.evaluate_power(sum.lambda); // hit env
                     assert!(s.is_finite(), "{:?}, {:?}", s, throughput);
                     assert!(throughput.is_finite(), "{:?}", throughput);
                     break;
@@ -389,7 +345,7 @@ fn main() {
 
                 let frame = TangentFrame::from_normal(intersection.normal);
                 let wi = frame.to_local(&-ray.direction);
-                let mat = &materials[intersection.material_id];
+                let mat = &scene.materials[intersection.material_id];
 
                 let wo = mat.sample(sum.lambda, wi, Sample2D::new_random_sample());
 

@@ -1,4 +1,4 @@
-use crate::geometry::{IntersectionData, Primitive, SurfaceIntersectionData};
+use crate::geometry::{Intersect, IntersectionData, SurfaceIntersectionData};
 use crate::math::{Point3, Ray, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -6,24 +6,14 @@ pub struct Sphere {
     pub radius: f32,
     pub origin: Point3,
     pub material_id: usize,
-    pub outer_medium_id: usize,
-    pub inner_medium_id: usize,
 }
 
 impl Sphere {
-    pub fn new(
-        radius: f32,
-        origin: Point3,
-        material_id: usize,
-        outer_medium_id: usize,
-        inner_medium_id: usize,
-    ) -> Sphere {
+    pub fn new(radius: f32, origin: Point3, material_id: usize) -> Sphere {
         Sphere {
             radius,
             origin,
             material_id,
-            outer_medium_id,
-            inner_medium_id,
         }
     }
 
@@ -34,7 +24,7 @@ impl Sphere {
     // }
 }
 
-impl Primitive for Sphere {
+impl Intersect for Sphere {
     fn intersect(&self, r: Ray, t0: f32, t1: f32) -> Option<IntersectionData> {
         let oc: Vec3 = r.origin - self.origin;
         let a = r.direction * r.direction;
@@ -58,8 +48,6 @@ impl Primitive for Sphere {
                     point,
                     normal.normalized(),
                     self.material_id,
-                    self.outer_medium_id,
-                    self.inner_medium_id,
                 ));
             }
             // time = r.time + (-b + discriminant_sqrt) / a;
@@ -74,8 +62,6 @@ impl Primitive for Sphere {
                     point,
                     normal.normalized(),
                     self.material_id,
-                    self.outer_medium_id,
-                    self.inner_medium_id,
                 ));
             }
         }

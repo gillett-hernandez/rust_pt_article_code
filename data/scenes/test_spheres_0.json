@@ -1,0 +1,37 @@
+{
+    "curves_lib": "data/curve_lib.json",
+    "materials_lib": "data/material_lib.json",
+    "env_color": "blackish",
+    "primitives": [
+        {
+            "type": "Sphere",
+            "origin": [
+                0.0,
+                0.0,
+                4.1
+            ],
+            "radius": 4.0,
+            "material": "ggx_glass_dispersive"
+        },
+        {
+            "type": "Sphere",
+            "origin": [
+                0.0,
+                0.0,
+                -1000.0
+            ],
+            "radius": 1000.0,
+            "material": "lambertian_grey"
+        },
+        {
+            "type": "Sphere",
+            "origin": [
+                0.0,
+                0.0,
+                25.0
+            ],
+            "radius": 7.0,
+            "material": "diffuse_light_warm"
+        }
+    ]
+}
