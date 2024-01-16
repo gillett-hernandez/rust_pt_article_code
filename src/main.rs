@@ -185,6 +185,8 @@ struct Opt {
     pub height: usize,
     #[structopt(long, default_value = "128")]
     pub samples: usize,
+    #[structopt(long, default_value = "0")]
+    pub threads: usize,
     #[structopt(long, default_value = "8")]
     pub bounces: usize,
     #[structopt(long, default_value = "0.18")]
@@ -194,10 +196,6 @@ struct Opt {
     #[structopt(long)]
     pub nee: bool,
     #[structopt(long)]
-    pub rr_min: usize,
-    #[structopt(long)]
-    pub rr_max: usize,
-    #[structopt(long)]
     pub output: Option<String>,
     pub scene_file: String,
 }
@@ -205,15 +203,27 @@ struct Opt {
 const NORMAL_OFFSET: f32 = 0.0001;
 
 fn main() {
-    let threads = num_cpus::get();
+    let opts = Opt::from_args();
+    let cpu_threads = num_cpus::get();
+    // 0 threads is auto:
+    // do 2 lower than the number of threads on the machine unless that would be 0, then just do 1
+
+    let threads = if opts.threads == 0 {
+        if cpu_threads > 3 {
+            cpu_threads - 2
+        } else {
+            1
+        }
+    } else {
+        opts.threads
+    };
     rayon::ThreadPoolBuilder::new()
-        .num_threads(if threads > 3 { threads - 2 } else { 1 })
+        .num_threads(threads)
         // .num_threads(threads as usize)
         .build_global()
         .unwrap();
 
     // rendering constants, i.e. film size and wavelength bounds
-    let opts = Opt::from_args();
     let h = opts.height;
     let w = opts.width;
     let samples = opts.samples;

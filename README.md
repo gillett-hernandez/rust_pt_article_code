@@ -21,4 +21,4 @@ To implement:
 * [ ] NEE
 * [ ] russian roulette
 * [ ] some acceleration structure (BVH)
-* [ ] basic texturing, likely using srgb upscaling
+* [ ] basic texturing, likely using srgb upscaling. or maybe using the new file format that has unlimited spectral color channels.
