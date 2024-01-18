@@ -1,5 +1,7 @@
 use minifb::Window;
 
+mod math;
+
 fn u32_to_rgb(v: u32) -> [u8; 3] {
     [
         ((v >> 16) % 256) as u8,
