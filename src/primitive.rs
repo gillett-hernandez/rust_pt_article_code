@@ -6,7 +6,7 @@ pub struct Intersection {
 }
 
 pub trait RayIntersection {
-    fn intersects(&self, r: Ray) -> Intersection;
+    fn intersects(&self, r: Ray) -> Option<Intersection>;
 }
 
 #[derive(Copy, Clone)]
