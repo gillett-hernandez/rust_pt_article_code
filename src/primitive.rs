@@ -30,7 +30,7 @@ impl RayIntersection for Sphere {
                 let t0 = -d_d0 - sqrt;
                 let t1 = -d_d0 + sqrt;
 
-                if t0 > t1 {
+                if t0 < t1 {
                     Some(Intersection { point: r.at(t0) })
                 } else {
                     Some(Intersection { point: r.at(t1) })
@@ -38,6 +38,31 @@ impl RayIntersection for Sphere {
             }
             a if a < 0.0 => None,
             _ => Some(Intersection { point: r.at(-d_d0) }),
+        }
+    }
+}
+
+mod tests {
+    use crate::math::Vec3;
+
+    use super::*;
+
+    #[test]
+    fn test_sphere_ray_intersection() {
+        let sphere = Sphere {
+            origin: Point3::new(2.0, 2.0, 2.0),
+            radius: 2.0,
+        };
+
+        let test_ray = Ray {
+            origin: Point3::ORIGIN,
+            direction: Vec3::new(1.0, 1.0, 1.0).normalized(),
+        };
+
+        let intersection = sphere.intersects(test_ray);
+
+        if let Some(isect) = intersection {
+            println!("{:?}", isect.point);
         }
     }
 }
