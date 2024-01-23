@@ -8,3 +8,9 @@ pub struct Intersection {
 pub trait RayIntersection {
     fn intersects(&self, r: Ray) -> Intersection;
 }
+
+#[derive(Copy, Clone)]
+pub struct Sphere {
+    pub origin: Point3,
+    pub radius: f32,
+}
