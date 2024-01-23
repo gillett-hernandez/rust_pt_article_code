@@ -6,7 +6,9 @@ use std::{
 
 use packed_simd::f32x4;
 
+#[derive(Copy, Clone)]
 pub struct Point3(pub f32x4);
+#[derive(Copy, Clone)]
 pub struct Vec3(pub f32x4);
 
 impl Point3 {
@@ -104,6 +106,16 @@ impl From<f32x4> for Point3 {
 impl From<Vec3> for Point3 {
     fn from(v: Vec3) -> Point3 {
         Point3::ORIGIN + v
+    }
+}
+
+impl fmt::Debug for Point3 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Point3")
+            .field(&self.x())
+            .field(&self.y())
+            .field(&self.z())
+            .finish()
     }
 }
 
@@ -271,8 +283,14 @@ impl From<Point3> for Vec3 {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct Ray {
     pub origin: Point3,
     pub direction: Vec3,
 }
 
+impl Ray {
+    pub fn at(&self, t: f32) -> Point3 {
+        self.origin + self.direction * t
+    }
+}
