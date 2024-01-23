@@ -270,3 +270,9 @@ impl From<Point3> for Vec3 {
         Vec3(p.0.replace(3, 0.0))
     }
 }
+
+pub struct Ray {
+    pub origin: Point3,
+    pub direction: Vec3,
+}
+
