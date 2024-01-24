@@ -1,4 +1,4 @@
-use crate::math::{Point3, Ray};
+use crate::math::{Point3, Ray, Vec3};
 
 #[derive(Copy, Clone)]
 pub struct Intersection {
@@ -32,9 +32,13 @@ impl RayIntersection for Sphere {
                 let t1 = -d_d0 + sqrt;
 
                 if t0 < t1 && t0 > 0.0 {
-                    Some(Intersection { point: r.at(t0) })
+                    let point = r.at(t0);
+                    let normal = (point - self.origin).normalized();
+                    Some(Intersection { point, normal })
                 } else if t1 > 0.0 {
-                    Some(Intersection { point: r.at(t1) })
+                    let point = r.at(t1);
+                    let normal = (point - self.origin).normalized();
+                    Some(Intersection { point, normal })
                 } else {
                     None
                 }
@@ -44,7 +48,9 @@ impl RayIntersection for Sphere {
                 if d_d0 > 0.0 {
                     return None;
                 }
-                Some(Intersection { point: r.at(-d_d0) })
+                let point = r.at(-d_d0);
+                let normal = (point - self.origin).normalized();
+                Some(Intersection { point, normal })
             }
         }
     }
