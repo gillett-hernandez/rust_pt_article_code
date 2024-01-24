@@ -1,8 +1,12 @@
 use minifb::Window;
 
+mod camera;
 mod math;
 mod primitive;
-mod camera;
+
+use camera::Camera;
+use math::{Point3, Vec3};
+use primitive::{Intersection, RayIntersection, Sphere};
 
 fn u32_to_rgb(v: u32) -> [u8; 3] {
     [
@@ -24,13 +28,31 @@ fn main() {
     // packed rgba layout
     let mut film = vec![rgb_to_u32(0, 0, 0); width * height];
 
+    let camera = Camera::new(
+        Point3::new(3.0, 3.0, 3.0),
+        Point3::ORIGIN,
+        Vec3::Z,
+        5.0,
+        1.0,
+    );
+
+    let sphere = Sphere {
+        origin: Point3::ORIGIN,
+        radius: 1.0,
+    };
+
     // do stuff to film
     for y in 0..height {
         for x in 0..width {
             let uv = (x as f32 / width as f32, y as f32 / height as f32);
 
-            let v = (((uv.0 - 0.5) * (uv.1 - 0.5).powi(2) * 201.0).sin() + 1.0) / 2.0;
-            
+            let r = camera.get_ray(uv);
+
+            let v = if let Some(_) = sphere.intersects(r) {
+                1.0
+            } else {
+                0.0
+            };
             film[y * width + x] =
                 rgb_to_u32((255.0 * v) as u8, (255.0 * v) as u8, (255.0 * v) as u8);
         }
