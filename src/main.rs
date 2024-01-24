@@ -18,7 +18,16 @@ fn main() {
     let width = 256;
 
     // packed rgba layout
-    let film = vec![rgb_to_u32(128, 128, 128); width * height];
+    let mut film = vec![rgb_to_u32(0, 0, 0); width * height];
+
+    // do stuff to film
+    for y in 0..height {
+        for x in 0..width {
+            if x & y == 0 {
+                film[y * width + x] = rgb_to_u32(255, 255, 255);
+            }
+        }
+    }
 
     // view film using minifb
     if true {
@@ -39,6 +48,7 @@ fn main() {
         }
     }
 
+    // output image
     let mut rgbimage = image::RgbImage::new(width as u32, height as u32);
     for (x, y, pixel) in rgbimage.enumerate_pixels_mut() {
         let packed = film
