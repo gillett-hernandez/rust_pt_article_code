@@ -44,3 +44,24 @@ impl Camera {
         }
     }
 }
+
+mod tests {
+    use super::*;
+    #[test]
+    fn test_camera_get_ray() {
+        let cam = Camera::new(
+            Point3::new(2.0, 2.0, 2.0),
+            Point3::ORIGIN,
+            Vec3::Z,
+            1.0,
+            9.0 / 16.0,
+        );
+
+        let r = cam.get_ray((0.0, 0.0));
+        println!("{:?}", r);
+        let r = cam.get_ray((0.5, 0.5));
+        println!("{:?}", r);
+        let r = cam.get_ray((1.0, 1.0));
+        println!("{:?}", r);
+    }
+}
