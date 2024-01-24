@@ -48,13 +48,17 @@ fn main() {
 
             let r = camera.get_ray(uv);
 
-            let v = if let Some(_) = sphere.intersects(r) {
-                1.0
+            let color = if let Some(Intersection { point, normal }) = sphere.intersects(r) {
+                let [x, y, z, _]: [f32; 4] = normal.as_array();
+                rgb_to_u32(
+                    (255.0 * (x + 1.0) / 2.0) as u8,
+                    (255.0 * (y + 1.0) / 2.0) as u8,
+                    (255.0 * (z + 1.0) / 2.0) as u8,
+                )
             } else {
-                0.0
+                0u32
             };
-            film[y * width + x] =
-                rgb_to_u32((255.0 * v) as u8, (255.0 * v) as u8, (255.0 * v) as u8);
+            film[y * width + x] = color;
         }
     }
 
