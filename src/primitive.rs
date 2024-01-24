@@ -30,14 +30,21 @@ impl RayIntersection for Sphere {
                 let t0 = -d_d0 - sqrt;
                 let t1 = -d_d0 + sqrt;
 
-                if t0 < t1 {
+                if t0 < t1 && t0 > 0.0 {
                     Some(Intersection { point: r.at(t0) })
-                } else {
+                } else if t1 > 0.0 {
                     Some(Intersection { point: r.at(t1) })
+                } else {
+                    None
                 }
             }
             a if a < 0.0 => None,
-            _ => Some(Intersection { point: r.at(-d_d0) }),
+            _ => {
+                if d_d0 > 0.0 {
+                    return None;
+                }
+                Some(Intersection { point: r.at(-d_d0) })
+            }
         }
     }
 }
