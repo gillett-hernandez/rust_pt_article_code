@@ -5,6 +5,7 @@ pub struct Intersection {
     pub point: Point3,
 }
 
+
 pub trait RayIntersection {
     fn intersects(&self, r: Ray) -> Option<Intersection>;
 }
