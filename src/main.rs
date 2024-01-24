@@ -23,9 +23,12 @@ fn main() {
     // do stuff to film
     for y in 0..height {
         for x in 0..width {
-            if x & y == 0 {
-                film[y * width + x] = rgb_to_u32(255, 255, 255);
-            }
+            let uv = (x as f32 / width as f32, y as f32 / height as f32);
+
+            let v = (((uv.0 - 0.5) * (uv.1 - 0.5).powi(2) * 201.0).sin() + 1.0) / 2.0;
+            
+            film[y * width + x] =
+                rgb_to_u32((255.0 * v) as u8, (255.0 * v) as u8, (255.0 * v) as u8);
         }
     }
 
