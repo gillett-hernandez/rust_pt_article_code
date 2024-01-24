@@ -2,6 +2,7 @@ use minifb::Window;
 
 mod math;
 mod primitive;
+mod camera;
 
 fn u32_to_rgb(v: u32) -> [u8; 3] {
     [
