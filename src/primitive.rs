@@ -1,4 +1,4 @@
-use crate::math::{Point3, Ray};
+use crate::math::{Point3, Ray, Vec3};
 
 #[derive(Copy, Clone)]
 pub struct Intersection {
