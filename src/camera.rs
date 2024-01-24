@@ -29,18 +29,4 @@ impl Camera {
             aspect_ratio,
         }
     }
-
-    pub fn get_ray(&self, mut pixel_uv: (f32, f32)) -> Ray {
-        // pixel_uv values range from 0 to 1, in the style of uv coordinates.
-        pixel_uv.0 = (pixel_uv.0 - 0.5) * self.factor;
-        pixel_uv.1 = (pixel_uv.1 - 0.5) * self.factor;
-
-        let origin =
-            self.origin + pixel_uv.0 * self.side + pixel_uv.1 * self.aspect_ratio * self.up;
-
-        Ray {
-            origin,
-            direction: self.direction,
-        }
-    }
 }
