@@ -1,10 +1,11 @@
 use std::{
-    f32::INFINITY,
+    f32::{consts::PI, INFINITY},
     fmt,
     ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
 use packed_simd::f32x4;
+use rand::random;
 
 #[derive(Copy, Clone)]
 pub struct Point3(pub f32x4);
@@ -290,7 +291,31 @@ pub struct Ray {
 }
 
 impl Ray {
+    pub fn new(origin: Point3, direction: Vec3) -> Ray {
+        Ray { origin, direction }
+    }
+
     pub fn at(&self, t: f32) -> Point3 {
         self.origin + self.direction * t
     }
+}
+
+pub fn random_on_unit_sphere() -> Vec3 {
+    // let u = 1.0 - 2.0 * r.x;
+    // let sqrt1u2 = (1.0 - u * u).sqrt();
+    // let (mut y, mut x) = (2.0 * PI * r.y).sin_cos();
+    // x *= sqrt1u2;
+    // y *= sqrt1u2;
+    // Vec3::new(x, y, u)
+    // let Sample2D { u, v } = self;
+    let x = random::<f32>();
+    let y = random::<f32>();
+
+    let phi = x * 2.0 * PI;
+    let z = y * 2.0 - 1.0;
+    let r = (1.0 - z * z).sqrt();
+
+    let (s, c) = phi.sin_cos();
+
+    Vec3::new(r * c, r * s, z)
 }

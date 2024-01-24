@@ -5,7 +5,7 @@ mod math;
 mod primitive;
 
 use camera::Camera;
-use math::{Point3, Vec3};
+use math::{random_on_unit_sphere, Point3, Ray, Vec3};
 use primitive::{Intersection, RayIntersection, Sphere};
 
 fn u32_to_rgb(v: u32) -> [u8; 3] {
@@ -36,8 +36,13 @@ fn main() {
         1.0,
     );
 
-    let sphere = Sphere {
+    let subject_sphere = Sphere {
         origin: Point3::ORIGIN,
+        radius: 1.0,
+    };
+
+    let light_sphere = Sphere {
+        origin: Point3::new(0.0, 0.0, 3.0),
         radius: 1.0,
     };
 
@@ -48,13 +53,16 @@ fn main() {
 
             let r = camera.get_ray(uv);
 
-            let color = if let Some(Intersection { point, normal }) = sphere.intersects(r) {
-                let [x, y, z, _]: [f32; 4] = normal.as_array();
-                rgb_to_u32(
-                    (255.0 * (x + 1.0) / 2.0) as u8,
-                    (255.0 * (y + 1.0) / 2.0) as u8,
-                    (255.0 * (z + 1.0) / 2.0) as u8,
-                )
+            let color = if let Some(Intersection { point, normal }) = subject_sphere.intersects(r) {
+                // intersected sphere, now shoot another ray and see if that intersects the light
+
+                let new_direction = normal + random_on_unit_sphere();
+                let new_r = Ray::new(point, new_direction);
+                if light_sphere.intersects(new_r).is_some() {
+                    rgb_to_u32(255u8, 255u8, 255u8)
+                } else {
+                    0u32
+                }
             } else {
                 0u32
             };
