@@ -89,6 +89,22 @@ fn main() {
         window.limit_update_rate(Some(std::time::Duration::from_micros(6944)));
 
         while window.is_open() && !window.is_key_down(minifb::Key::Escape) {
+            let max = *film
+                .iter()
+                .reduce(|a, b| if *a > *b { a } else { b })
+                .unwrap();
+
+            for y in 0..height {
+                for x in 0..width {
+                    let v = film[y * width + x];
+
+                    buffer[y * width + x] = rgb_to_u32(
+                        (255.0 * v / max) as u8,
+                        (255.0 * v / max) as u8,
+                        (255.0 * v / max) as u8,
+                    );
+                }
+            }
             window.update_with_buffer(&buffer, width, height).unwrap();
         }
     }
