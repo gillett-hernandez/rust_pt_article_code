@@ -26,7 +26,8 @@ fn main() {
     let width = 256;
 
     // packed rgba layout
-    let mut film = vec![rgb_to_u32(0, 0, 0); width * height];
+    let mut buffer = vec![rgb_to_u32(0, 0, 0); width * height];
+    let mut film = vec![0.0f32; width * height];
 
     let camera = Camera::new(
         Point3::new(3.0, 3.0, 3.0),
@@ -47,26 +48,29 @@ fn main() {
     };
 
     // do stuff to film
-    for y in 0..height {
-        for x in 0..width {
-            let uv = (x as f32 / width as f32, y as f32 / height as f32);
+    for _ in 0..100 {
+        for y in 0..height {
+            for x in 0..width {
+                let uv = (x as f32 / width as f32, y as f32 / height as f32);
 
-            let r = camera.get_ray(uv);
+                let r = camera.get_ray(uv);
 
-            let color = if let Some(Intersection { point, normal }) = subject_sphere.intersects(r) {
-                // intersected sphere, now shoot another ray and see if that intersects the light
+                let v = if let Some(Intersection { point, normal }) = subject_sphere.intersects(r) {
+                    // intersected sphere, now shoot another ray and see if that intersects the light
 
-                let new_direction = normal + random_on_unit_sphere();
-                let new_r = Ray::new(point, new_direction);
-                if light_sphere.intersects(new_r).is_some() {
-                    rgb_to_u32(255u8, 255u8, 255u8)
+                    let new_direction = normal + random_on_unit_sphere();
+                    let new_r = Ray::new(point, new_direction);
+                    if light_sphere.intersects(new_r).is_some() {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 } else {
-                    0u32
-                }
-            } else {
-                0u32
-            };
-            film[y * width + x] = color;
+                    0.0
+                };
+
+                film[y * width + x] += v;
+            }
         }
     }
 
@@ -85,14 +89,14 @@ fn main() {
         window.limit_update_rate(Some(std::time::Duration::from_micros(6944)));
 
         while window.is_open() && !window.is_key_down(minifb::Key::Escape) {
-            window.update_with_buffer(&film, width, height).unwrap();
+            window.update_with_buffer(&buffer, width, height).unwrap();
         }
     }
 
     // output image
     let mut rgbimage = image::RgbImage::new(width as u32, height as u32);
     for (x, y, pixel) in rgbimage.enumerate_pixels_mut() {
-        let packed = film
+        let packed = buffer
             .get((y * width as u32 + x) as usize)
             .cloned()
             .unwrap_or(0u32);
