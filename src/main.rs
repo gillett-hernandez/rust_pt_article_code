@@ -30,10 +30,10 @@ fn main() {
     let mut film = vec![0.0f32; width * height];
 
     let camera = Camera::new(
-        Point3::new(3.0, 3.0, 3.0),
+        Point3::new(3.0, 3.0, 0.0),
         Point3::ORIGIN,
         Vec3::Z,
-        5.0,
+        3.0,
         1.0,
     );
 
@@ -99,9 +99,9 @@ fn main() {
                     let v = film[y * width + x];
 
                     buffer[y * width + x] = rgb_to_u32(
-                        (255.0 * v / max) as u8,
-                        (255.0 * v / max) as u8,
-                        (255.0 * v / max) as u8,
+                        (255.0 * v / max).ceil() as u8,
+                        (255.0 * v / max).ceil() as u8,
+                        (255.0 * v / max).ceil() as u8,
                     );
                 }
             }
