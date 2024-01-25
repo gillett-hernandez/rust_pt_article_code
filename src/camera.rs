@@ -29,4 +29,7 @@ impl Camera {
             aspect_ratio,
         }
     }
+    pub fn get_ray(&self, mut pixel_uv: (f32, f32)) -> Ray {
+        todo!()
+    }
 }
